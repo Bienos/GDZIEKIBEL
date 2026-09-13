@@ -23,13 +23,15 @@ Task specifications live in `tasks/`.
 
 ```text
 app/
-  layout.tsx          root layout, <html lang="pl">, metadata and viewport
-  page.tsx            minimal foundation shell (no map/geolocation/toilet data)
-  page.module.css     styles for the shell only
+  [locale]/
+    layout.tsx        root layout, <html lang> per locale, metadata, hreflang
+    page.tsx          minimal foundation shell (no map/geolocation/toilet data)
+    page.module.css   styles for the shell only
   globals.css         reset, body defaults, imports tokens.css
   tokens.css          design tokens (colour, spacing, type) — single source
 lib/
   env/server.ts       the only validated reader of server environment variables
+  i18n/               supported locales and the copy dictionaries
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -54,7 +56,7 @@ Ownership:
 
 ## Configuration
 
-- `next.config.ts` — Next.js configuration
+- `next.config.ts` — Next.js configuration, including the `/` to `/pl` redirect
 - `tsconfig.json` — TypeScript strict, `@/*` path alias to the repository root
 - `eslint.config.mjs` — flat config extending `eslint-config-next`
 - `vitest.config.ts` — `unit` and `integration` projects
@@ -69,6 +71,7 @@ Ownership:
 
 - `docs/adr/0001-foundation-stack.md` — package manager, runtime, migration
   tooling, test runners, styling approach.
+- `docs/adr/0002-locale-in-the-url.md` — why the locale is a route segment.
 - `docs/contracts/` — empty; no cross-layer contract exists yet.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
   see `docs/research/README.md`.

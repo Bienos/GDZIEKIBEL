@@ -111,6 +111,29 @@ official opening hours for municipal toilets, and the metro rule as an official
 record. The schema in TASK-003 keeps source records separate from the canonical
 toilet, so adding the city later is additive rather than a rebuild.
 
+### Owner-directed additions outside the task sequence
+
+**Polish/English language switch, 2026-09-13.** Requested by the project owner
+after TASK-001 and after the first production deployment. The locale is a route
+segment, `/pl` and `/en`, with the bare domain redirecting to `/pl`. Copy lives
+in `lib/i18n/dictionaries.ts`. Recorded in `docs/adr/0002-locale-in-the-url.md`.
+
+This is not part of TASK-001 or TASK-002. It is logged here so the roadmap
+reflects what the repository actually contains.
+
+**First production deployment, 2026-09-13.** Deployed to Vercel at
+`https://gdziekibel-bienos.vercel.app`, confirmed loading by the owner. The
+deployment was made by uploading files directly, not by linking the GitHub
+repository, because the Vercel integration available to this session has no
+team read access: `list_teams` returns an empty list and reads against the
+`bienos` scope are refused with HTTP 403. Consequences, which stand until the
+repository is imported from the Vercel dashboard:
+
+- pushes to the repository do not rebuild the site;
+- the live site was built from eight uploaded files and a trimmed
+  `package.json`, not from the committed tree;
+- `vercel.json` was not exercised by that build.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -123,12 +146,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 28 tests in 3 files                            |
-| `pnpm build`              | pass, `/` and `/_not-found` prerendered as static     |
+| `pnpm test:unit`          | pass, 39 tests in 4 files                            |
+| `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, baseline applied to an empty database          |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 2 tests                                        |
-| `pnpm test:e2e`           | pass, 1 test in the `mobile-chromium` project        |
+| `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project       |
 
 Also observed:
 
