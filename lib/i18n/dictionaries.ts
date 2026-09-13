@@ -81,6 +81,13 @@ export interface Dictionary {
   detailConfidenceHigh: string;
   detailConfidenceMedium: string;
   detailConfidenceLow: string;
+  /**
+   * The detail sheet's primary CTA (TASK-012): `BRAND.md`'s recommended
+   * production navigation copy and `DESIGN.md` section 9.4's own example
+   * supporting punchline.
+   */
+  detailNavigateCta: string;
+  detailNavigatePunchline: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -124,6 +131,8 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceHigh: 'PEWNOŚĆ DANYCH: WYSOKA',
     detailConfidenceMedium: 'PEWNOŚĆ DANYCH: ŚREDNIA',
     detailConfidenceLow: 'PEWNOŚĆ DANYCH: NISKA',
+    detailNavigateCta: 'PROWADŹ MNIE',
+    detailNavigatePunchline: 'ZANIM BĘDZIE ZA PÓŹNO.',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
@@ -164,6 +173,8 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceHigh: 'DATA CONFIDENCE: HIGH',
     detailConfidenceMedium: 'DATA CONFIDENCE: MEDIUM',
     detailConfidenceLow: 'DATA CONFIDENCE: LOW',
+    detailNavigateCta: 'TAKE ME THERE',
+    detailNavigatePunchline: "BEFORE IT'S TOO LATE.",
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },

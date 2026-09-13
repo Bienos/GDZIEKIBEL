@@ -1,18 +1,21 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011 smoke tests: the home page loads with the
+ * TASK-005/006/008/010/011/012 smoke tests: the home page loads with the
  * GdzieKibel.pl identity, the map shell's tile fallback state (since no
  * environment available to this suite holds a real MapTiler key — see
  * docs/adr/0005-map-tile-provider.md), the location permission flow, the
- * nearby-toilets fetch, the nearest-toilet preview, and the toilet detail
- * sheet it opens into.
+ * nearby-toilets fetch, the nearest-toilet preview, the toilet detail sheet
+ * it opens into, and that sheet's navigation CTA.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
  * testable here even though live tiles are not. Marker-click selection is
- * not covered: this environment cannot render real markers either. A
- * live-tile smoke test, including marker clicks, belongs wherever a key is
+ * not covered: this environment cannot render real markers either. The
+ * navigation CTA's `href` is asserted directly rather than followed: this
+ * environment has no egress to google.com (see
+ * docs/adr/0008-external-navigation-url.md). A live-tile smoke test,
+ * including marker clicks, belongs wherever a key is
  * configured.
  */
 test('the bare domain serves the Polish shell with the map fallback state', async ({ page }) => {
@@ -265,6 +268,15 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
   await expect(sheet.getByText('OGRANICZONE')).toBeVisible();
   await expect(sheet.getByText('TOALETA UNISEX')).toBeVisible();
   await expect(sheet.getByText('PEWNOŚĆ DANYCH: NISKA')).toBeVisible();
+
+  const navigateLink = sheet.getByRole('link', { name: 'PROWADŹ MNIE' });
+  await expect(navigateLink).toHaveAttribute(
+    'href',
+    'https://www.google.com/maps/dir/?api=1&destination=52.2297%2C21.0122&travelmode=walking',
+  );
+  await expect(navigateLink).toHaveAttribute('target', '_blank');
+  await expect(navigateLink).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(sheet.getByText('ZANIM BĘDZIE ZA PÓŹNO.')).toBeVisible();
 
   await page.getByRole('button', { name: 'ZAMKNIJ' }).click();
 

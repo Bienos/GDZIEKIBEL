@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { buildWalkingNavigationUrl } from '@/lib/external-navigation/build-navigation-url';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { confidenceLabel, featureStateLabel } from '@/lib/toilets/detail-copy';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
@@ -10,8 +11,8 @@ import styles from './MapShell.module.css';
 /**
  * The toilet detail sheet (TASK-011, DESIGN.md 9.4). Shows every value
  * FR-05 lists that the nearby API actually returns today: name, distance +
- * ETA, opening status + price, accessibility features, and a data-
- * confidence hint. No primary CTA, no hours, no report control — see
+ * ETA, opening status + price, a navigation CTA (TASK-012), accessibility
+ * features, and a data-confidence hint. No hours, no report control — see
  * `tasks/011-toilet-detail-sheet.md` for why each is deliberately absent
  * rather than an oversight.
  */
@@ -50,6 +51,15 @@ export function ToiletDetailSheet({
             {priceLabel(toilet.priceState, dictionary)}
           </span>
         </div>
+        <a
+          className={styles.detailNavigate}
+          href={buildWalkingNavigationUrl({ lat: toilet.lat, lng: toilet.lng })}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {dictionary.detailNavigateCta}
+        </a>
+        <p className={styles.detailNavigatePunchline}>{dictionary.detailNavigatePunchline}</p>
         <dl className={styles.detailFeatures}>
           <div className={styles.detailFeatureRow}>
             <dt className={styles.detailFeatureLabel}>{dictionary.detailFeatureWheelchair}</dt>

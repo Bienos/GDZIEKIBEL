@@ -359,3 +359,35 @@
   line-height: var(--type-body-leading);
   font-weight: 700;
 }
+
+/* The detail sheet's primary navigation CTA (TASK-012). An <a>, not a
+   button: its href is the real destination (docs/adr/0008), so it needs
+   the usual anchor reset (display/text-decoration) rather than reusing
+   .sheetPrimary, which is styled for a <button>. */
+.detailNavigate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  background: var(--action-primary);
+  color: var(--text-primary);
+  font-size: var(--type-body-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.detailNavigate:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.detailNavigatePunchline {
+  margin: 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-body-leading);
+  color: var(--text-muted);
+}

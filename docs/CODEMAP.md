@@ -47,9 +47,9 @@ components/
                       opens the detail sheet (TASK-011)
   map/ToiletDetailSheet.tsx
                       toilet detail sheet (TASK-011): name, distance/ETA,
-                      status/price, accessibility features, confidence hint;
-                      no CTA, hours, or report control yet (see the task
-                      file for why)
+                      status/price, a real navigation CTA (TASK-012),
+                      accessibility features, confidence hint; no hours or
+                      report control yet (see the task file for why)
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -96,6 +96,10 @@ lib/
                       maps FeatureState/ConfidenceLevel to dictionary copy
                       for the toilet detail sheet (TASK-011); pure, no
                       React/DOM
+  external-navigation/build-navigation-url.ts
+                      builds a destination-only Google Maps walking URL
+                      (TASK-012, ADR 0008); Apple Maps deferred until a
+                      session can test real app-opening behaviour
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -159,6 +163,9 @@ Ownership:
   order is distance plus a named per-`access_type` metre penalty; the other
   four PRODUCT.md section 11 ranking criteria are named as currently inert,
   not silently dropped.
+- `docs/adr/0008-external-navigation-url.md` — a destination-only Google
+  Maps web URL as the sole navigation provider; Apple Maps deferred until
+  testable on a real device.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -177,13 +184,17 @@ nearby API orders results by distance plus access-type confidence (TASK-009,
 ADR 0007), verified against a real PostGIS database and a real running
 production build (see PROGRESS.md), and the map shell shows that top-ranked
 result as a collapsed preview card (TASK-010). Tapping the preview, or a
-marker, now opens a toilet detail sheet (TASK-011) with name, distance/ETA,
-status/price, accessibility features, and a confidence hint — all real
-values, no fabricated ones. No primary navigation CTA, hours display, or
-report control exists on that sheet yet (each is a later task's job; see
-`tasks/011-toilet-detail-sheet.md`). No filters or accessible list view
-exists yet. No deduplication, opening-hours parsing, real confidence
-scoring, reporting, analytics or error-tracking code exists. Ingestion
-exists but has never run against the live source, and the map — tiles, the
-location dot, and the toilet markers — has never been visually observed
-rendering for real from this session. Those areas are owned by later tasks.
+marker, opens a toilet detail sheet (TASK-011) with name, distance/ETA,
+status/price, accessibility features, and a confidence hint, plus a real
+`PROWADŹ MNIE` navigation CTA (TASK-012, ADR 0008) that opens a destination-
+only Google Maps walking-directions link — this completes Milestone 1's
+first core journey end to end, though this session cannot verify the link
+actually reaches a working Google Maps route (no egress to `google.com`).
+Hours display and the report control still do not exist on that sheet
+(each is a later task's job; see `tasks/011-toilet-detail-sheet.md`). No
+filters or accessible list view exists yet. No deduplication, opening-hours
+parsing, real confidence scoring, reporting, analytics or error-tracking
+code exists. Ingestion exists but has never run against the live source,
+and the map — tiles, the location dot, and the toilet markers — has never
+been visually observed rendering for real from this session. Those areas
+are owned by later tasks.

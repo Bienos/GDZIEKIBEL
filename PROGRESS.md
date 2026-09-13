@@ -553,6 +553,55 @@ preview-tap entry point to the detail sheet is covered by Playwright; the
 marker-click entry point uses the identical `selectedId` state and is
 correct by inspection, same as the existing, already-documented gap.
 
+### TASK-012 — External walking navigation
+
+Complete on 2026-09-13. Specified in
+`tasks/012-external-walking-navigation.md`; decision recorded in
+`docs/adr/0008-external-navigation-url.md`. **Completes Milestone 1**:
+per `PLAN.md`, "the first core journey should work end to end."
+
+Created: `lib/external-navigation/build-navigation-url.ts`, a pure function
+taking only a toilet's `{ lat, lng }` and returning a Google Maps
+walking-directions URL (`api=1&destination=<lat>,<lng>&travelmode=walking`).
+The toilet detail sheet (`TASK-011`) now renders this as a real `<a>`
+(`target="_blank"`, `rel="noopener noreferrer"`) labelled `PROWADŹ MNIE`,
+with the supporting punchline `ZANIM BĘDZIE ZA PÓŹNO.`
+(`DESIGN.md` 9.4's own example), sitting between the status/price badges
+and the accessibility features per that section's information order.
+
+**Destination-only, by construction, not just by convention.**
+`ARCHITECTURE.md` section 12 forbids embedding the user's own coordinates
+into shareable URLs unnecessarily. The function's signature has no
+parameter for an origin or the user's granted location at all — there is
+no code path through which it could leak in, not merely a rule this task
+chose to follow.
+
+**Apple Maps is not built.** `ARCHITECTURE.md` allows it "when tested";
+this session cannot test real app-opening behaviour on a device, the same
+category of limitation already documented for the MapTiler tile provider.
+The Google Maps web link works in every browser, including Safari on iOS,
+without platform-detection code.
+
+**What is, and is not, verified.** A direct `curl` to the generated URL
+from this session returns the egress proxy's `403` — the same restriction
+already hit for MapTiler, Overpass, and the Warsaw open-data hosts — so
+whether the link actually reaches a working Google Maps walking route was
+not observed. What was verified: the URL-building function by unit test
+(exact string match, `travelmode=walking`, no `origin` parameter present
+regardless of input), and the real rendered `href`/`target`/`rel` on the
+CTA in a running production build via Playwright, using intercepted API
+coordinates.
+
+Verified: lint, format, typecheck, 134 unit tests (3 new), 25 integration
+tests (unchanged), the production build, and 9 Playwright tests (extending
+the existing detail-sheet test with the CTA's `href`/`target`/`rel` and
+punchline assertions, not a new test file).
+
+Not created, by design: Apple Maps or any other provider, server-side URL
+generation (nothing a round-trip would add, since coordinates are already
+client-side), and any change to the report control, hours, ranking, or the
+preview.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -588,12 +637,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 131 tests in 20 files                          |
+| `pnpm test:unit`          | pass, 134 tests in 21 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 25 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 9 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet) |
+| `pnpm test:e2e`           | pass, 9 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA) |
 
 Also observed:
 
@@ -685,9 +734,12 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-012 — External walking navigation` per `PLAN.md`: `PROWADŹ MNIE`
-   launches a tested walking-navigation destination flow, becoming the
-   detail sheet's primary CTA that `TASK-011` deliberately left out. Needs a
-   `tasks/012-*.md` file. `PRODUCT.md` section 12 ("Navigation") and
-   `BRAND.md`'s "Navigation" copy govern it; at this point, per `PLAN.md`,
-   "the first core journey should work end to end" (Milestone 1 complete).
+2. `TASK-013 — Opening-hours normalisation/status` per `PLAN.md`, the first
+   task of Milestone 2 ("Real utility"): source-supported hours produce
+   `OPEN`/`CLOSED`/`LIKELY_OPEN`/`LIKELY_CLOSED`/`UNKNOWN` states in the
+   Warsaw timezone, replacing the nearby API's current constant `UNKNOWN`
+   (`docs/adr/0006-nearby-api-contract.md`). Needs a `tasks/013-*.md` file.
+   `PRODUCT.md` section 10 governs the state model and its "never claim
+   `OPEN` without sufficiently trusted evidence" rule; `lib/ingest/osm/
+   normalize.ts` already stores `opening_hours_raw` but nothing parses it
+   yet.
