@@ -27,6 +27,9 @@ app/
     layout.tsx        root layout, <html lang> per locale, metadata, hreflang
     page.tsx          top bar (wordmark, language switch) + the map shell
     page.module.css   styles for the top bar and page layout
+  api/toilets/nearby/route.ts
+                      POST only; bounded nearby active toilets, distance
+                      order, no filters/ranking yet (TASK-007)
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -49,8 +52,20 @@ lib/
   geolocation/request-location.ts
                       wraps navigator.geolocation in one promise, classified
                       into granted/denied/unavailable/timeout/error
+  toilets/walking-time.ts
+                      distance -> approximate minutes, one named conservative
+                      constant (ADR 0006)
+  toilets/nearby-request.ts
+                      validates a nearby-API request body; no filters field
+                      yet, see ADR 0006
+  toilets/nearby-response.ts
+                      shapes one DB row into the nearby-API response item;
+                      enum values pass through unchanged, never booleans
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
+db/
+  queries/nearby.ts   the nearby-toilets PostGIS query (TASK-007); active-only,
+                      distance order, server-capped result count
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -102,6 +117,9 @@ Ownership:
   `ARCHITECTURE.md` section 5 with its reason.
 - `docs/adr/0005-map-tile-provider.md` — MapTiler as the provisional,
   configurable tile provider, and why the map shell requires a fallback state.
+- `docs/adr/0006-nearby-api-contract.md` — feature fields as enum strings not
+  booleans, `openingStatus` always `UNKNOWN` until TASK-013, no `filters`
+  field until TASK-016, the walking-time constant.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -114,8 +132,10 @@ Ownership:
 ## Not yet created
 
 A Warsaw map shell renders, and the location permission ask/grant/deny flow
-works, with no toilet markers, ranking, or bottom sheet. No nearby query,
-deduplication, opening-hours parsing, confidence scoring, reporting,
-analytics or error-tracking code exists. Ingestion exists but has never run
-against the live source, and the map has never been visually observed with
-real tiles from this session. Those areas are owned by later tasks.
+works, with no toilet markers, ranking, or bottom sheet. The nearby-toilets
+API exists and is queryable, but nothing calls it from any page yet
+(TASK-008 wires the map to it). No filters, deduplication, opening-hours
+parsing, confidence scoring, reporting, analytics or error-tracking code
+exists. Ingestion exists but has never run against the live source, and the
+map has never been visually observed with real tiles from this session.
+Those areas are owned by later tasks.

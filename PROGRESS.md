@@ -307,6 +307,57 @@ Additionally, the granted path has only been observed with the map itself in
 its fallback state, since this session has no working tile key; placing a
 real marker on a real map has not been visually confirmed.
 
+### TASK-007 — Nearby toilet API
+
+Complete on 2026-09-13. Specified in `tasks/007-nearby-toilet-api.md`,
+contract decisions in `docs/adr/0006-nearby-api-contract.md`.
+
+Created: `POST /api/toilets/nearby`, validated by
+`lib/toilets/nearby-request.ts`, queried by `db/queries/nearby.ts`
+(`ST_DWithin` bound, `ST_Distance` reported, `canonical_status = 'active'`
+only, distance-ascending order, capped at 30 results server-side regardless
+of request), shaped for response by `lib/toilets/nearby-response.ts`.
+
+Three real deviations from `ARCHITECTURE.md` section 7's illustrative JSON,
+each recorded in ADR 0006 rather than silently implemented: feature fields
+(`wheelchair`, `changingTable`, `unisex`) are returned as the schema's own
+`'yes' | 'no' | 'limited' | 'unknown'` strings, not booleans, since forcing
+`limited` into `true` would overclaim accessibility and forcing it to `null`
+would throw away a real signal; `openingStatus` is always the literal
+`"UNKNOWN"`, because nothing before `TASK-013` computes anything else and
+`PRODUCT.md` section 10 forbids claiming otherwise; the request does not
+accept a `filters` field at all yet, because `TASK-016` is what would make
+one do anything, and accepting-then-ignoring one would mislead a caller.
+`approxWalkingMinutes` comes from one named, documented conservative
+constant (`lib/toilets/walking-time.ts`), 75 m/min, rounded up.
+
+**Verified against a running server with real HTTP requests, not only unit
+calls:** a `curl` smoke test against `pnpm build && pnpm start` confirmed, in
+order: an empty-database request returns `{"results": []}`; an out-of-range
+latitude returns `400` naming only the field, never the submitted value; a
+request carrying `filters` is rejected outright rather than silently
+accepted; malformed JSON returns a clean `400`; and, after inserting one real
+row, a positive result carries the exact contract shape end to end,
+including `"openingStatus": "UNKNOWN"` and `"wheelchair": "limited"` passed
+through unchanged.
+
+A stale row from an earlier manual TASK-004 ingestion run (`"Toaleta Plac
+Defilad"`) was still sitting in the dev database and caused four integration
+tests to fail against the wrong baseline. The dev database was reset, and
+the tests were also rewritten to filter to their own inserted rows rather
+than assume the table holds nothing else — this is the second time
+leftover state in the shared dev database has caused a test failure that
+was not a code defect, so the fix is now structural, not just a cleanup.
+
+Verified: lint, format, typecheck, 103 unit tests (13 new: walking-time,
+response shaping, request validation), 25 integration tests (6 new,
+including the cap, the active-only filter, and the enum pass-through), the
+production build, and the 5 existing Playwright tests unaffected.
+
+Not created, by design: filters, ranking beyond plain distance order, `GET
+/api/toilets/:id`, the reports endpoint, rate limiting, and any caller of
+this endpoint from a page.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -342,11 +393,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 87 tests in 11 files                           |
+| `pnpm test:unit`          | pass, 103 tests in 14 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 19 tests in 3 files                            |
+| `pnpm test:integration`   | pass, 25 tests in 4 files                            |
 | `pnpm test:e2e`           | pass, 5 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant) |
 
 Also observed:
@@ -439,7 +490,7 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-007 — Nearby toilet API` per `PLAN.md`, which needs a
-   `tasks/007-*.md` file. This is the first task that touches the database
-   from a request path: given coordinates, return bounded nearby canonical
-   toilets using the PostGIS schema TASK-003 built.
+2. `TASK-008 — Display nearby toilets on map` per `PLAN.md`, which needs a
+   `tasks/008-*.md` file. This is the task that finally calls
+   `POST /api/toilets/nearby` from the page and renders its results as
+   markers on the `MapShell` TASK-005 and TASK-006 already built.
