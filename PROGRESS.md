@@ -842,6 +842,78 @@ Not created, by design: radius expansion or a real empty-state design
 `PRODUCT.md` section 6.3 names, and any change to ranking or opening-
 status computation themselves.
 
+### TASK-017 — No-results and radius expansion
+
+Complete on 2026-09-13. Specified in
+`tasks/017-no-results-radius-expansion.md`; decision recorded in
+`docs/adr/0012-no-results-diagnosis.md`.
+
+**Three diagnosed states, filters checked first.** `TASK-016` made an empty
+`toilets` array a real, reachable state for a reason radius expansion
+cannot fix: an active filter excluding every candidate. Showing one
+generic "search farther" message regardless of cause would send the user
+toward an action that cannot help whenever a filter, not distance, is the
+real reason. `NoResultsState` diagnoses, in order: (1) a filter is active
+→ point at it, offer `WYCZYŚĆ` (reusing the filter sheet's own action and
+state, no parallel mechanism); (2) no filter, radius below
+`MAX_RADIUS_METERS` → `SZUKAJ DALEJ` jumps directly to the maximum, not a
+stepped ladder `PRODUCT.md` never asks for; (3) no filter, radius already
+at the maximum → an honest `ROZUMIEM`-dismissible state naming this
+search's own limit, never implying nothing exists anywhere (`PRODUCT.md`
+section 6.2's explicit rule).
+
+**No flash during loading.** A fresh `SearchParams` (coords/filters/radius)
+is recorded from inside the fetch effect's own `.then` callback, once that
+exact search actually finishes; `toiletsLoaded` is derived at render time
+by comparing the current render's own params against the last-recorded
+ones, rather than a boolean reset with a synchronous `setState` call in the
+effect body. The latter is what a first implementation attempt used, and
+`pnpm lint` rejected it (`react-hooks/set-state-in-effect`); reading a
+generation counter from a `ref` during render was the next attempt, and
+`pnpm lint` rejected that too (`react-hooks/refs` — refs may not be read
+during render). The params-comparison that shipped satisfies both rules
+and needed no `eslint-disable`. `noResultsDismissed` uses the same
+comparison against a separately recorded "dismissed at these params" value,
+so any dependency change (new location, filter, or radius) clears a stale
+dismissal for free.
+
+**Never alongside the filter sheet.** Both are bottom-sheet-style
+overlays; while `filtersOpen`, the no-results overlay does not render, so
+its filtered-state action never coexists with the filter sheet's own
+identically-labelled `WYCZYŚĆ` button.
+
+Created: `components/map/NoResultsState.tsx` (the three-branch render,
+`fill` prop switching between the map view's bottom-anchored placement,
+reusing `.preview`'s footprint, and the list view's full-area placement).
+`lib/toilets/fetch-nearby.ts` gained an optional `radiusMeters`, omitted
+at the default radius so a pre-`TASK-017` request shape is unchanged.
+`MapShell.tsx` gained `searchRadius`, `loadedParams`/`dismissedParams`
+state and the `SearchParams`/`sameSearchParams` comparison described
+above; the existing fetch effect now also depends on `searchRadius` and
+sends it as `radiusMeters` (omitted at the default value). Six new
+`Dictionary` keys (`noResultsHeadline`, `noResultsFilteredBody`,
+`noResultsRadiusBody`, `noResultsRadiusAction`, `noResultsExhaustedBody`,
+`noResultsExhaustedAction`); the filtered state's action reuses the
+existing `filtersClear` key.
+
+Verified: lint, format, typecheck, 194 unit tests (unchanged — no new pure
+function warranted a dedicated unit test; the three-branch logic is a
+short, direct render and is covered by the three new E2E tests instead),
+30 integration tests (unchanged — no query or schema change), the
+production build, and 15 Playwright tests (3 new, one per diagnosed
+state: an active filter shows the filtered message and `WYCZYŚĆ` clears it
+and re-fetches with no `filters` key; an expandable radius shows `SZUKAJ
+DALEJ` and clicking it re-fetches with `radiusMeters: 5000`; a radius
+already at that maximum shows the exhausted message and `ROZUMIEM`
+dismisses the overlay). All 12 pre-existing Playwright tests still pass
+unmodified, including the one asserting the exact pre-`TASK-017` request
+body shape at the default radius.
+
+Not created, by design: a stepped/progressive radius-expansion ladder, any
+change to `MAX_RADIUS_METERS`/`DEFAULT_RADIUS_METERS` or the server-side
+cap, outside-Warsaw detection (`TASK-018`'s job), and any change to
+filters or ranking themselves.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -882,7 +954,7 @@ before the run.
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 30 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 12 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet) |
+| `pnpm test:e2e`           | pass, 15 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, and the three no-results states) |
 
 Also observed:
 
@@ -974,12 +1046,10 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-017 — No-results and radius expansion` per `PLAN.md`: "empty
-   state offers a useful fallback and can search farther." Needs a
-   `tasks/017-*.md` file. `PRODUCT.md` section 6.2 governs the no-useful-
-   result journey (say so clearly, show alternatives beyond the default
-   radius, allow expanding the search, never imply nothing exists
-   anywhere) and `DESIGN.md` section 9.8's "No results" screen. `TASK-016`
-   made this a real, reachable state — a filter honestly returns few or no
-   results against today's mostly-unconfirmed data — rather than a
-   hypothetical one.
+2. `TASK-018 — Outside-Warsaw behaviour` per `PLAN.md`: "users outside
+   supported geography receive a clear supported-area message/manual
+   Warsaw map path." Needs a `tasks/018-*.md` file. This is a distinct
+   concern from `TASK-017`'s radius-exhausted state
+   (`docs/adr/0012-no-results-diagnosis.md`'s own closing note): "far
+   outside Warsaw" and "inside Warsaw but genuinely thin" are different
+   causes and must not be conflated into one message.

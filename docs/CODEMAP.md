@@ -41,8 +41,13 @@ components/
                       load before its first successful load, independent of
                       that, the location ask/denied screens on mount and the
                       nearby-toilets fetch centred on the default Warsaw view;
-                      owns the map/list `viewMode` toggle (TASK-015) and the
-                      active filters feeding that same fetch (TASK-016)
+                      owns the map/list `viewMode` toggle (TASK-015), the
+                      active filters feeding that same fetch (TASK-016), and
+                      the search radius plus the no-results diagnosis
+                      (TASK-017, ADR 0012): a `SearchParams`-comparison
+                      derives `toiletsLoaded`/`noResultsDismissed` instead of
+                      resetting them with a synchronous `setState` in the
+                      fetch effect
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -64,6 +69,13 @@ components/
                       sections, toggles bound to a draft state; POKAŻ WYNIKI
                       applies it, WYCZYŚĆ clears and reapplies; no live
                       result count (see the task file for why)
+  map/NoResultsState.tsx
+                      no-results overlay (TASK-017, ADR 0012): diagnoses an
+                      active filter, an expandable radius, or an exhausted
+                      radius, filters checked first, and offers only the one
+                      action that can actually help; same component for both
+                      the map view's bottom-anchored placement and the list
+                      view's full-area placement
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -85,7 +97,9 @@ lib/
   toilets/nearby-request.ts
                       validates a nearby-API request body; accepts an
                       optional `filters` object since TASK-016 (ADR 0006,
-                      ADR 0011)
+                      ADR 0011); exports DEFAULT_RADIUS_METERS and
+                      MAX_RADIUS_METERS, the latter also the no-results
+                      overlay's search-farther target (TASK-017)
   toilets/filter-nearby.ts
                       the five MVP filters' matching predicate and the
                       server-side filter step (TASK-016, ADR 0011): a
@@ -102,7 +116,8 @@ lib/
   toilets/fetch-nearby.ts
                       client-side call to the nearby API; never throws;
                       omits the `filters` key entirely when none is active
-                      (TASK-016)
+                      (TASK-016), and the `radiusMeters` key at the default
+                      radius (TASK-017)
   toilets/marker-diff.ts
                       pure add/remove reconciliation between a marker id set
                       and a new toilet list
@@ -226,6 +241,11 @@ Ownership:
   relevant fact is positively confirmed; `'unknown'` and `'limited'` never
   satisfy an active filter, applied server-side within the existing
   nearest-30-candidate cap.
+- `docs/adr/0012-no-results-diagnosis.md` — three diagnosed causes for an
+  empty result, filters checked first since they are the more directly
+  fixable cause; radius expansion jumps straight to `MAX_RADIUS_METERS`
+  rather than a stepped ladder; the exhausted state names this search's own
+  limit, never the world's.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -270,9 +290,14 @@ server-side, within the existing nearest-30-candidate cap, to markers, the
 list, and the preview alike, since all three read the one filtered
 `toilets` state; a filter only keeps a positively-confirmed fact, so
 against today's mostly-unconfirmed real data a filter can honestly return
-few or no results — `TASK-017`'s radius expansion is the next task
-because that is expected. The report control still does not exist on the
-detail sheet (`TASK-020`'s job). No deduplication, real confidence
+few or no results. An empty result is now diagnosed, not just shown
+(TASK-017, ADR 0012): a `NIC BLISKO.` overlay tells an active filter (offer
+to clear it) apart from an expandable radius (`SZUKAJ DALEJ` jumps straight
+to `MAX_RADIUS_METERS`, no stepped ladder) apart from a radius already at
+that maximum (an honest `ROZUMIEM`-dismissible state naming this search's
+own limit, never the world's) — filters checked first, since they are the
+more likely, more directly fixable cause. The report control still does
+not exist on the detail sheet (`TASK-020`'s job). No deduplication, real confidence
 scoring, reporting, analytics or error-tracking code exists. Ingestion
 exists but has never run against the live source — so the opening-hours
 and charge parsers have never seen a real OSM string, only constructed

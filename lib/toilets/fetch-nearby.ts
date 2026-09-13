@@ -13,6 +13,9 @@ export interface FetchNearbyParams {
   /** Omitted (or `{}`) when no filter is active — the request body then
    * carries no `filters` key at all, matching pre-`TASK-016` requests. */
   filters?: NearbyFilters;
+  /** Omitted to let the server apply `DEFAULT_RADIUS_METERS`. `TASK-017`'s
+   * "search farther" action sends `MAX_RADIUS_METERS` explicitly. */
+  radiusMeters?: number;
 }
 
 export type FetchNearbyResult =
@@ -30,6 +33,7 @@ export async function fetchNearbyToilets(
       body: JSON.stringify({
         location: { lat: params.lat, lng: params.lng },
         ...(hasFilters ? { filters: params.filters } : {}),
+        ...(params.radiusMeters !== undefined ? { radiusMeters: params.radiusMeters } : {}),
       }),
     });
 

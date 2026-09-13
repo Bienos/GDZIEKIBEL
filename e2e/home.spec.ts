@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013/015/016 smoke tests: the home page
+ * TASK-005/006/008/010/011/012/013/015/016/017 smoke tests: the home page
  * loads with the GdzieKibel.pl identity, the map shell's tile fallback
  * state (since no environment available to this suite holds a real
  * MapTiler key — see docs/adr/0005-map-tile-provider.md), the location
  * permission flow, the nearby-toilets fetch, the nearest-toilet preview,
  * the toilet detail sheet it opens into, that sheet's navigation CTA, a
  * real (non-`UNKNOWN`) opening status rendering its own label and colour,
- * the map/list toggle, and the filter sheet sending real filters in the
- * nearby request.
+ * the map/list toggle, the filter sheet sending real filters in the nearby
+ * request, and the no-results overlay's three diagnosed states.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -433,4 +433,100 @@ test('the filter sheet sends filters in the nearby request, and clear resets the
   await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(3);
   expect(requestBodies.at(-1)).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
   await expect(dialog).toHaveCount(0);
+});
+
+/**
+ * TASK-017 / docs/adr/0012-no-results-diagnosis.md: three diagnosed causes
+ * for an empty `toilets` array, checked in this order — an active filter,
+ * an expandable radius, an exhausted radius — each with its own message
+ * and the one action that can actually help.
+ */
+test('an active filter explains empty results, and clearing it re-fetches without the filter (TASK-017)', async ({
+  page,
+}) => {
+  const requestBodies: unknown[] = [];
+  await page.route('**/api/toilets/nearby', async (route) => {
+    requestBodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' });
+  });
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  await page.getByRole('button', { name: 'FILTRY' }).click();
+  await page.getByRole('checkbox', { name: 'OTWARTE TERAZ' }).check();
+  await page.getByRole('button', { name: 'POKAŻ WYNIKI' }).click();
+
+  await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(2);
+
+  const overlay = page.getByRole('status').filter({ hasText: 'NIC BLISKO.' });
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByText('Żaden kibel nie spełnia wybranych filtrów.')).toBeVisible();
+
+  // The filter, not the radius, is the diagnosed cause: only one action is
+  // offered, and it reuses the filter sheet's own "WYCZYŚĆ" copy/state.
+  await expect(overlay.getByRole('button', { name: 'SZUKAJ DALEJ' })).toHaveCount(0);
+  await overlay.getByRole('button', { name: 'WYCZYŚĆ' }).click();
+
+  await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(3);
+  expect(requestBodies.at(-1)).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
+
+  // No filter is active any more: the same overlay now diagnoses distance.
+  await expect(overlay.getByText('W tym promieniu nie mamy nic sensownego.')).toBeVisible();
+});
+
+test('an expandable radius explains empty results, and searching farther re-fetches at the maximum radius (TASK-017)', async ({
+  page,
+}) => {
+  const requestBodies: unknown[] = [];
+  await page.route('**/api/toilets/nearby', async (route) => {
+    requestBodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' });
+  });
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(1);
+  expect(requestBodies[0]).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
+
+  const overlay = page.getByRole('status').filter({ hasText: 'NIC BLISKO.' });
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByText('W tym promieniu nie mamy nic sensownego.')).toBeVisible();
+
+  await overlay.getByRole('button', { name: 'SZUKAJ DALEJ' }).click();
+
+  // Jumps directly to the server ceiling, not a stepped ladder
+  // (docs/adr/0012-no-results-diagnosis.md).
+  await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(2);
+  expect(requestBodies.at(-1)).toEqual({
+    location: { lat: 52.2297, lng: 21.0122 },
+    radiusMeters: 5000,
+  });
+});
+
+test('an exhausted radius explains empty results without implying nothing exists anywhere, and can be dismissed (TASK-017)', async ({
+  page,
+}) => {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' }),
+  );
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  const overlay = page.getByRole('status').filter({ hasText: 'NIC BLISKO.' });
+  await expect(overlay).toBeVisible();
+  await overlay.getByRole('button', { name: 'SZUKAJ DALEJ' }).click();
+
+  // Still empty at the maximum radius: the honest final state, naming this
+  // search's own limit rather than claiming nothing exists anywhere.
+  await expect(
+    overlay.getByText('Nic nie znaleźliśmy nawet w najszerszym promieniu wyszukiwania.'),
+  ).toBeVisible();
+  const dismiss = overlay.getByRole('button', { name: 'ROZUMIEM' });
+  await expect(dismiss).toBeVisible();
+
+  await dismiss.click();
+  await expect(overlay).toHaveCount(0);
 });

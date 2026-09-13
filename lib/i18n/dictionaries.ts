@@ -120,6 +120,19 @@ export interface Dictionary {
    */
   detailNavigateCta: string;
   detailNavigatePunchline: string;
+  /**
+   * The no-results overlay (TASK-017, `docs/adr/0012-no-results-diagnosis.md`).
+   * One shared headline; the body and action are picked from three states —
+   * a filter is active (its action reuses `filtersClear` above, no new key),
+   * the radius can still expand, or the radius is already at its maximum.
+   * `DESIGN.md` section 9.8 and `BRAND.md`'s "No results" copy.
+   */
+  noResultsHeadline: string;
+  noResultsFilteredBody: string;
+  noResultsRadiusBody: string;
+  noResultsRadiusAction: string;
+  noResultsExhaustedBody: string;
+  noResultsExhaustedAction: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -185,6 +198,12 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceLow: 'PEWNOŚĆ DANYCH: NISKA',
     detailNavigateCta: 'PROWADŹ MNIE',
     detailNavigatePunchline: 'ZANIM BĘDZIE ZA PÓŹNO.',
+    noResultsHeadline: 'NIC BLISKO.',
+    noResultsFilteredBody: 'Żaden kibel nie spełnia wybranych filtrów.',
+    noResultsRadiusBody: 'W tym promieniu nie mamy nic sensownego.',
+    noResultsRadiusAction: 'SZUKAJ DALEJ',
+    noResultsExhaustedBody: 'Nic nie znaleźliśmy nawet w najszerszym promieniu wyszukiwania.',
+    noResultsExhaustedAction: 'ROZUMIEM',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
@@ -247,6 +266,12 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceLow: 'DATA CONFIDENCE: LOW',
     detailNavigateCta: 'TAKE ME THERE',
     detailNavigatePunchline: "BEFORE IT'S TOO LATE.",
+    noResultsHeadline: 'NOTHING NEARBY.',
+    noResultsFilteredBody: 'No toilet matches your filters.',
+    noResultsRadiusBody: 'Nothing decent within this radius yet.',
+    noResultsRadiusAction: 'SEARCH FARTHER',
+    noResultsExhaustedBody: 'Nothing here, even at our widest search radius.',
+    noResultsExhaustedAction: 'GOT IT',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },

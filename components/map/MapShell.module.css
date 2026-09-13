@@ -532,3 +532,76 @@
   font-size: var(--type-body-size);
   cursor: pointer;
 }
+
+/* The no-results overlay (TASK-017, docs/adr/0012-no-results-diagnosis.md).
+   .noResultsOverlay reuses .preview's bottom-anchored footprint since it
+   replaces that preview in map view; .noResultsPanel instead fills the
+   otherwise-empty list area in list view. No illustration (DESIGN.md
+   section 9.8 asks for one): this project has no icon library, the same
+   reasoning applied to every other marker/button/badge so far. */
+.noResultsOverlay,
+.noResultsPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.noResultsOverlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-5);
+  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 0 -2px 12px rgb(11 11 11 / 15%);
+}
+
+.noResultsPanel {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-5);
+}
+
+.noResultsHeadline {
+  margin: 0;
+  max-width: 28ch;
+  font-family: var(--font-display);
+  font-size: var(--type-display-l-size);
+  line-height: var(--type-display-l-leading);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.noResultsBody {
+  margin: 0;
+  max-width: 36ch;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+}
+
+.noResultsAction {
+  min-height: 52px;
+  padding-inline: var(--space-5);
+  background: var(--action-primary);
+  color: var(--text-primary);
+  border: none;
+  font-size: var(--type-body-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.noResultsAction:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}

@@ -15,9 +15,11 @@ import type { NearbyFilters } from '@/lib/toilets/filter-nearby';
 import { fetchNearbyToilets } from '@/lib/toilets/fetch-nearby';
 import { diffMarkers } from '@/lib/toilets/marker-diff';
 import { createToiletMarkerElement, setMarkerSelected } from '@/lib/toilets/marker-element';
+import { DEFAULT_RADIUS_METERS, MAX_RADIUS_METERS } from '@/lib/toilets/nearby-request';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
 import { FiltersSheet } from './FiltersSheet';
 import { NearestToiletPreview } from './NearestToiletPreview';
+import { NoResultsState } from './NoResultsState';
 import { ToiletDetailSheet } from './ToiletDetailSheet';
 import { ToiletListView } from './ToiletListView';
 import styles from './MapShell.module.css';
@@ -28,9 +30,11 @@ import styles from './MapShell.module.css';
  * nearest-toilet preview (TASK-010, reading the API's now-ranked order from
  * TASK-009), the toilet detail sheet (TASK-011, opened by tapping either of
  * those or a list row), the accessible list view (TASK-015, a toggle away
- * from the map), and the core filters (TASK-016), which apply to markers,
- * the list, and the preview alike since all three read the one `toilets`
- * state the filtered fetch already produced.
+ * from the map), the core filters (TASK-016), which apply to markers, the
+ * list, and the preview alike since all three read the one `toilets` state
+ * the filtered fetch already produced, and the no-results diagnosis
+ * (TASK-017, `docs/adr/0012-no-results-diagnosis.md`), which reads that
+ * same state to tell an active filter apart from a genuinely thin radius.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -54,6 +58,32 @@ import styles from './MapShell.module.css';
  */
 type LocationFlowState = 'asking' | 'requesting' | 'granted' | 'denied' | 'dismissed';
 
+/**
+ * The exact inputs one fetch of the nearby-toilets effect below ran with.
+ * `toiletsLoaded`/`noResultsDismissed` compare the current render's own
+ * values against a `SearchParams` recorded from inside a `.then` callback
+ * or a click handler — never a `setState` call placed synchronously in the
+ * effect body itself, which `react-hooks/set-state-in-effect` rejects, and
+ * never a ref read during render, which `react-hooks/refs` rejects. Fields
+ * are compared with `===`: `coords`/`filters` are only ever replaced
+ * wholesale (never mutated in place), so reference equality here means the
+ * same thing the effect's own dependency array already means.
+ */
+interface SearchParams {
+  coords: { lat: number; lon: number } | null;
+  filters: NearbyFilters;
+  radiusMeters: number;
+}
+
+function sameSearchParams(recorded: SearchParams | null, current: SearchParams): boolean {
+  return (
+    recorded !== null &&
+    recorded.coords === current.coords &&
+    recorded.filters === current.filters &&
+    recorded.radiusMeters === current.radiusMeters
+  );
+}
+
 export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('maplibre-gl').Map | null>(null);
@@ -69,6 +99,9 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const [activeFilters, setActiveFilters] = useState<NearbyFilters>({});
   const [draftFilters, setDraftFilters] = useState<NearbyFilters>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchRadius, setSearchRadius] = useState(DEFAULT_RADIUS_METERS);
+  const [loadedParams, setLoadedParams] = useState<SearchParams | null>(null);
+  const [dismissedParams, setDismissedParams] = useState<SearchParams | null>(null);
   const askHeadingRef = useRef<HTMLHeadingElement>(null);
   const deniedHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -136,26 +169,44 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   }, [locationFlow]);
 
   // Fetches nearby toilets on mount, centred on the default Warsaw view, and
-  // again whenever the user grants a real location or changes the active
-  // filters (TASK-016). This is independent of whether the map itself has
-  // loaded: PRODUCT.md section 6.1 requires the manual-browse journey to be
-  // useful even without a grant, and an empty map with no toilets until
-  // location is shared would be a weak version of that. Rendering the
-  // results as markers is a separate effect below.
+  // again whenever the user grants a real location, changes the active
+  // filters (TASK-016), or expands the search radius (TASK-017). This is
+  // independent of whether the map itself has loaded: PRODUCT.md section 6.1
+  // requires the manual-browse journey to be useful even without a grant,
+  // and an empty map with no toilets until location is shared would be a
+  // weak version of that. Rendering the results as markers is a separate
+  // effect below.
+  //
+  // `loadedParams` only changes from inside the `.then` callback, once this
+  // exact search has actually finished — see `SearchParams` above for why
+  // `toiletsLoaded` (derived below, at render time) is false for the
+  // duration of a new search without this effect resetting anything itself.
   useEffect(() => {
     let cancelled = false;
     const center = grantedCoords ?? { lat: WARSAW_CENTER_LAT, lon: WARSAW_CENTER_LNG };
+    const params: SearchParams = {
+      coords: grantedCoords,
+      filters: activeFilters,
+      radiusMeters: searchRadius,
+    };
 
-    fetchNearbyToilets({ lat: center.lat, lng: center.lon, filters: activeFilters }).then(
-      (result) => {
-        if (!cancelled && result.ok) setToilets(result.results);
-      },
-    );
+    fetchNearbyToilets({
+      lat: center.lat,
+      lng: center.lon,
+      filters: activeFilters,
+      // Omitted at the default radius, matching the pre-TASK-017 request
+      // shape; only a real expansion is worth naming explicitly.
+      radiusMeters: searchRadius === DEFAULT_RADIUS_METERS ? undefined : searchRadius,
+    }).then((result) => {
+      if (cancelled) return;
+      if (result.ok) setToilets(result.results);
+      setLoadedParams(params);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [grantedCoords, activeFilters]);
+  }, [grantedCoords, activeFilters, searchRadius]);
 
   // Reconciles the fetched toilet list onto the map: adds a marker for a new
   // id, removes one for an id no longer present, leaves the rest alone. A
@@ -243,6 +294,22 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
 
   const selectedToilet = toilets.find((toilet) => toilet.id === selectedId) ?? null;
   const recommendedToilet = toilets[0] ?? null;
+  const currentSearchParams: SearchParams = {
+    coords: grantedCoords,
+    filters: activeFilters,
+    radiusMeters: searchRadius,
+  };
+  const toiletsLoaded = sameSearchParams(loadedParams, currentSearchParams);
+  const noResultsDismissed = sameSearchParams(dismissedParams, currentSearchParams);
+  // Never alongside the filter sheet: both are bottom-sheet-style overlays,
+  // and the filter sheet's own "WYCZYŚĆ" would otherwise coexist with this
+  // overlay's identical filtered-state action.
+  const noResultsVisible =
+    (locationFlow === 'granted' || locationFlow === 'dismissed') &&
+    !filtersOpen &&
+    toiletsLoaded &&
+    toilets.length === 0 &&
+    !noResultsDismissed;
 
   return (
     <div className={styles.mapWrapper}>
@@ -303,6 +370,19 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
             toilet={selectedToilet}
             dictionary={dictionary}
             onClose={() => setSelectedId(null)}
+          />
+        ) : noResultsVisible ? (
+          <NoResultsState
+            dictionary={dictionary}
+            hasActiveFilters={Object.keys(activeFilters).length > 0}
+            radiusAtMax={searchRadius >= MAX_RADIUS_METERS}
+            fill={viewMode === 'list'}
+            onClearFilters={() => {
+              setDraftFilters({});
+              setActiveFilters({});
+            }}
+            onExpandRadius={() => setSearchRadius(MAX_RADIUS_METERS)}
+            onDismiss={() => setDismissedParams(currentSearchParams)}
           />
         ) : (
           viewMode === 'map' &&
