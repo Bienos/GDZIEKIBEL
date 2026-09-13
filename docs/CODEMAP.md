@@ -47,7 +47,11 @@ components/
                       (TASK-017, ADR 0012): a `SearchParams`-comparison
                       derives `toiletsLoaded`/`noResultsDismissed` instead of
                       resetting them with a synchronous `setState` in the
-                      fetch effect
+                      fetch effect; a real grant outside `WARSAW_BBOX`
+                      (TASK-018, ADR 0013) is checked before either the
+                      marker or `grantedCoords` are touched, so it never
+                      reaches the fetch/ranking/marker code, and gets its
+                      own `outside` screen distinct from `denied`
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -84,7 +88,9 @@ lib/
                       also PaymentMethods (TASK-014), the cash/cards/coins shape
   toilets/normalized-source-record.ts
                       Zod schema an ingestion adapter must emit (contract section 6)
-  geo/warsaw.ts       coarse Warsaw bounding box, a first filter only
+  geo/warsaw.ts       coarse Warsaw bounding box, a first filter only;
+                      `isWithinWarsawBbox` is also the outside-Warsaw check
+                      the location flow uses (TASK-018)
   map/tile-provider.ts  builds the MapTiler style URL from a key; the one
                       place that knows the provider's URL shape
   map/warsaw-view.ts  initial camera position and pan limits for the map shell
@@ -246,6 +252,11 @@ Ownership:
   fixable cause; radius expansion jumps straight to `MAX_RADIUS_METERS`
   rather than a stepped ladder; the exhausted state names this search's own
   limit, never the world's.
+- `docs/adr/0013-outside-warsaw-behaviour.md` — `isWithinWarsawBbox` as the
+  one definition of the supported area; a real out-of-area grant is
+  checked before any coordinate is stored, so it never reaches the
+  fetch/ranking/marker code; one action, not the denied screen's two, since
+  being outside Warsaw will not change on a retry.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -296,7 +307,13 @@ to clear it) apart from an expandable radius (`SZUKAJ DALEJ` jumps straight
 to `MAX_RADIUS_METERS`, no stepped ladder) apart from a radius already at
 that maximum (an honest `ROZUMIEM`-dismissible state naming this search's
 own limit, never the world's) — filters checked first, since they are the
-more likely, more directly fixable cause. The report control still does
+more likely, more directly fixable cause. A real location grant from
+outside the coarse `WARSAW_BBOX` (TASK-018, ADR 0013) gets its own
+`JESTEŚ POZA WARSZAWĄ.` screen, distinct from the `denied` copy — the app
+does know where the user is, just not somewhere it covers — with one
+action, not the denied screen's two, since a retry cannot change the
+answer; the out-of-area coordinate never reaches the marker, fetch, or
+ranking code. The report control still does
 not exist on the detail sheet (`TASK-020`'s job). No deduplication, real confidence
 scoring, reporting, analytics or error-tracking code exists. Ingestion
 exists but has never run against the live source — so the opening-hours

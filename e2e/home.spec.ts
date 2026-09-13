@@ -1,15 +1,17 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013/015/016/017 smoke tests: the home page
- * loads with the GdzieKibel.pl identity, the map shell's tile fallback
- * state (since no environment available to this suite holds a real
- * MapTiler key — see docs/adr/0005-map-tile-provider.md), the location
- * permission flow, the nearby-toilets fetch, the nearest-toilet preview,
- * the toilet detail sheet it opens into, that sheet's navigation CTA, a
- * real (non-`UNKNOWN`) opening status rendering its own label and colour,
- * the map/list toggle, the filter sheet sending real filters in the nearby
- * request, and the no-results overlay's three diagnosed states.
+ * TASK-005/006/008/010/011/012/013/015/016/017/018 smoke tests: the home
+ * page loads with the GdzieKibel.pl identity, the map shell's tile
+ * fallback state (since no environment available to this suite holds a
+ * real MapTiler key — see docs/adr/0005-map-tile-provider.md), the
+ * location permission flow, the nearby-toilets fetch, the nearest-toilet
+ * preview, the toilet detail sheet it opens into, that sheet's navigation
+ * CTA, a real (non-`UNKNOWN`) opening status rendering its own label and
+ * colour, the map/list toggle, the filter sheet sending real filters in
+ * the nearby request, the no-results overlay's three diagnosed states, and
+ * a real location grant from outside Warsaw showing its own distinct
+ * screen.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -158,6 +160,47 @@ test.describe('with a real browser location grant', () => {
       location: { lat: GRANTED_LOCATION.latitude, lng: GRANTED_LOCATION.longitude },
     });
     expect(requestBodies[0]).not.toEqual(requestBodies.at(-1));
+  });
+});
+
+test.describe('a real browser location grant from outside Warsaw', () => {
+  // Kraków, the same out-of-Warsaw fixture tests/unit/geo.test.ts already uses.
+  const KRAKOW_LOCATION = { latitude: 50.0647, longitude: 19.945 };
+  test.use({ permissions: ['geolocation'], geolocation: KRAKOW_LOCATION });
+
+  test('shows a distinct screen, never the denied copy, and never sends the out-of-area coordinates (TASK-018)', async ({
+    page,
+  }) => {
+    const requestBodies: unknown[] = [];
+    await page.route('**/api/toilets/nearby', async (route) => {
+      requestBodies.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' });
+    });
+
+    await page.goto('/pl');
+    await page.getByRole('button', { name: 'UDOSTĘPNIJ LOKALIZACJĘ' }).click();
+
+    const outsideHeading = page.getByRole('heading', { name: 'JESTEŚ POZA WARSZAWĄ.' });
+    await expect(outsideHeading).toBeVisible();
+    await expect(
+      page.getByText('Szukamy kibli tylko w Warszawie — nie mamy nic w Twojej okolicy.'),
+    ).toBeVisible();
+    await expect(outsideHeading).toBeFocused();
+
+    // Never the denied screen's copy, and no retry action — being outside
+    // Warsaw will not change on a second attempt (docs/adr/0013).
+    await expect(page.getByRole('heading', { name: 'NIE WIEMY, GDZIE JESTEŚ.' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'SPRÓBUJ PONOWNIE' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'OTWÓRZ MAPĘ WARSZAWY' }).click();
+    await expect(outsideHeading).toHaveCount(0);
+
+    // The out-of-area coordinates never reach the fetch: every request stays
+    // centred on the default Warsaw view, exactly like a skipped/denied grant.
+    await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(1);
+    for (const body of requestBodies) {
+      expect(body).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
+    }
   });
 });
 

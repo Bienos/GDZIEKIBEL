@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
+import { isWithinWarsawBbox } from '@/lib/geo/warsaw';
 import { requestLocation, type LocationResult } from '@/lib/geolocation/request-location';
 import { buildMapStyleUrl } from '@/lib/map/tile-provider';
 import {
@@ -32,9 +33,11 @@ import styles from './MapShell.module.css';
  * those or a list row), the accessible list view (TASK-015, a toggle away
  * from the map), the core filters (TASK-016), which apply to markers, the
  * list, and the preview alike since all three read the one `toilets` state
- * the filtered fetch already produced, and the no-results diagnosis
- * (TASK-017, `docs/adr/0012-no-results-diagnosis.md`), which reads that
- * same state to tell an active filter apart from a genuinely thin radius.
+ * the filtered fetch already produced, the no-results diagnosis (TASK-017,
+ * `docs/adr/0012-no-results-diagnosis.md`), which reads that same state to
+ * tell an active filter apart from a genuinely thin radius, and the
+ * outside-Warsaw screen (TASK-018, `docs/adr/0013-outside-warsaw-behaviour.md`),
+ * which keeps a real but out-of-area grant from ever reaching any of it.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -55,8 +58,13 @@ import styles from './MapShell.module.css';
  * `denied` covers every non-grant outcome (denied, unavailable, timeout,
  * unexpected error) with the one shared screen `BRAND.md` and `DESIGN.md`
  * both give for it, rather than one screen per cause.
+ *
+ * `outside` is distinct from `denied` (TASK-018,
+ * `docs/adr/0013-outside-warsaw-behaviour.md`): a real grant with real
+ * coordinates, just outside `WARSAW_BBOX`, so `denied`'s "we don't know
+ * where you are" copy would be false.
  */
-type LocationFlowState = 'asking' | 'requesting' | 'granted' | 'denied' | 'dismissed';
+type LocationFlowState = 'asking' | 'requesting' | 'granted' | 'denied' | 'outside' | 'dismissed';
 
 /**
  * The exact inputs one fetch of the nearby-toilets effect below ran with.
@@ -104,6 +112,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const [dismissedParams, setDismissedParams] = useState<SearchParams | null>(null);
   const askHeadingRef = useRef<HTMLHeadingElement>(null);
   const deniedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const outsideHeadingRef = useRef<HTMLHeadingElement>(null);
 
   // NEXT_PUBLIC_ variables must be referenced literally for Next.js to inline
   // them at build time; wrapping this read in a helper would leave it empty.
@@ -166,6 +175,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   useEffect(() => {
     if (locationFlow === 'asking') askHeadingRef.current?.focus();
     if (locationFlow === 'denied') deniedHeadingRef.current?.focus();
+    if (locationFlow === 'outside') outsideHeadingRef.current?.focus();
   }, [locationFlow]);
 
   // Fetches nearby toilets on mount, centred on the default Warsaw view, and
@@ -280,6 +290,14 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     const result = await requestLocation();
 
     if (result.status === 'granted') {
+      // Checked before either the marker or `grantedCoords` are touched
+      // (TASK-018, ADR 0013): a coordinate outside the supported area must
+      // never reach the fetch/ranking/marker code that assumes a usable
+      // Warsaw-area position.
+      if (!isWithinWarsawBbox(result.coords)) {
+        setLocationFlow('outside');
+        return;
+      }
       await addUserLocationMarker(result);
       setLocationFlow('granted');
       setGrantedCoords({ lat: result.coords.lat, lon: result.coords.lon });
@@ -454,6 +472,24 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
             <button
               type="button"
               className={styles.sheetSecondary}
+              onClick={() => setLocationFlow('dismissed')}
+            >
+              {dictionary.locationDeniedOpenMap}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {locationFlow === 'outside' && (
+        <div className={styles.scrim}>
+          <div className={styles.sheet} role="dialog" aria-modal="false">
+            <h2 ref={outsideHeadingRef} tabIndex={-1} className={styles.sheetHeadline}>
+              {dictionary.outsideWarsawHeadline}
+            </h2>
+            <p className={styles.sheetBody}>{dictionary.outsideWarsawBody}</p>
+            <button
+              type="button"
+              className={styles.sheetPrimary}
               onClick={() => setLocationFlow('dismissed')}
             >
               {dictionary.locationDeniedOpenMap}

@@ -70,6 +70,16 @@ export interface Dictionary {
   locationDeniedBody: string;
   locationDeniedRetry: string;
   locationDeniedOpenMap: string;
+  /**
+   * A real grant from outside `WARSAW_BBOX` (TASK-018,
+   * `docs/adr/0013-outside-warsaw-behaviour.md`): distinct from
+   * `locationDenied*` above because the app does know where the user is,
+   * just not somewhere it covers. One action only, reusing
+   * `locationDeniedOpenMap` above — no retry, since being outside Warsaw
+   * will not change on a second attempt.
+   */
+  outsideWarsawHeadline: string;
+  outsideWarsawBody: string;
   /** Accessible label for the user's own position marker on the map. */
   userLocationLabel: string;
   /**
@@ -169,6 +179,8 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     locationDeniedBody: 'Bez lokalizacji możemy pokazać tylko ogólną mapę Warszawy.',
     locationDeniedRetry: 'SPRÓBUJ PONOWNIE',
     locationDeniedOpenMap: 'OTWÓRZ MAPĘ WARSZAWY',
+    outsideWarsawHeadline: 'JESTEŚ POZA WARSZAWĄ.',
+    outsideWarsawBody: 'Szukamy kibli tylko w Warszawie — nie mamy nic w Twojej okolicy.',
     userLocationLabel: 'Twoja lokalizacja',
     previewLabel: 'NAJBLIŻSZY SENSOWNY KIBEL',
     previewDistanceUnit: 'M',
@@ -237,6 +249,8 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     locationDeniedBody: 'Without location we can only show a general map of Warsaw.',
     locationDeniedRetry: 'TRY AGAIN',
     locationDeniedOpenMap: 'OPEN THE WARSAW MAP',
+    outsideWarsawHeadline: "YOU'RE OUTSIDE WARSAW.",
+    outsideWarsawBody: 'We only look for toilets in Warsaw — we have nothing near you.',
     userLocationLabel: 'Your location',
     previewLabel: 'THE NEAREST TOILET WORTH USING',
     previewDistanceUnit: 'm',

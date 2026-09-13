@@ -914,6 +914,64 @@ change to `MAX_RADIUS_METERS`/`DEFAULT_RADIUS_METERS` or the server-side
 cap, outside-Warsaw detection (`TASK-018`'s job), and any change to
 filters or ranking themselves.
 
+### TASK-018 — Outside-Warsaw behaviour
+
+Complete on 2026-09-13. Specified in
+`tasks/018-outside-warsaw-behaviour.md`; decision recorded in
+`docs/adr/0013-outside-warsaw-behaviour.md`.
+
+**One definition of Warsaw, checked before any coordinate is stored.**
+`TASK-006`'s location flow only ever produced `granted` (real coordinates)
+or one shared `denied` screen for every non-grant outcome — none of which
+have real coordinates, so one honest message covered all of them. A grant
+from outside Warsaw is neither: the browser succeeds and the coordinates
+are real, so `denied`'s "we don't know where you are" copy would be false,
+but the existing nearest-toilet pipeline has no concept of "too far to be
+useful." This task reuses `isWithinWarsawBbox` (`lib/geo/warsaw.ts`),
+already the one definition of the supported area for ingestion validation
+and the map's own camera bounds — no second, possibly diverging boundary.
+The check runs in `handleShareLocation`, immediately after a successful
+grant and before either `addUserLocationMarker` or `setGrantedCoords` run:
+an out-of-area coordinate never reaches the marker, the fetch, or the
+ranking code, so every existing consumer keeps the same contract it always
+had (`grantedCoords` is a usable Warsaw-area position or `null`, never a
+third kind of value it must additionally distrust).
+
+**One action, not the denied screen's two.** `denied` offers both `SPRÓBUJ
+PONOWNIE` (retry — reasonable when permission or a transient GPS failure
+caused it) and `OTWÓRZ MAPĘ WARSZAWY`. Being in Kraków is not transient in
+that sense; a retry implies a false remedy. The new `outside`
+`LocationFlowState` offers only `PLAN.md`'s named "manual Warsaw map
+path": it reuses the denied screen's own `OTWÓRZ MAPĘ WARSZAWY` action and
+dictionary key, transitioning to the same `dismissed` state so the
+already-working no-grant behaviour (default Warsaw-centred fetch, no
+location dot) is the implementation, not a second one.
+
+Created: two `Dictionary` keys (`outsideWarsawHeadline`, e.g.
+`JESTEŚ POZA WARSZAWĄ.`, and `outsideWarsawBody`); the action reuses
+`locationDeniedOpenMap`. `MapShell.tsx` gained the `outside`
+`LocationFlowState` value, an `outsideHeadingRef` following the same
+focus-on-mount pattern as the ask/denied screens (`DESIGN.md` section 14),
+and the new screen itself — reusing `.scrim`/`.sheet`/`.sheetHeadline`/
+`.sheetBody`/`.sheetPrimary` verbatim, no new CSS.
+
+Verified: lint, format, typecheck, 194 unit tests (unchanged —
+`isWithinWarsawBbox` itself was not touched, and is already covered by
+`tests/unit/geo.test.ts`, including a Kraków fixture reused directly by
+the new E2E test below), 30 integration tests (unchanged), the production
+build, and 16 Playwright tests (1 new: a real Playwright geolocation grant
+at Kraków's coordinates shows the `JESTEŚ POZA WARSZAWĄ.` heading, focused,
+confirms the `denied` heading and its `SPRÓBUJ PONOWNIE` button are absent,
+clicking `OTWÓRZ MAPĘ WARSZAWY` dismisses the screen, and every intercepted
+nearby-toilets request — before and after — stays centred on the default
+Warsaw view, never the real Kraków coordinates). All 15 pre-existing
+Playwright tests still pass unmodified.
+
+Not created, by design: any change to `WARSAW_BBOX` itself, a retry action
+on the outside screen, or any real multi-city support (`PRODUCT.md`
+principle 7, "Warsaw first" — this task only detects and communicates the
+existing boundary).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -954,7 +1012,7 @@ before the run.
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 30 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 15 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, and the three no-results states) |
+| `pnpm test:e2e`           | pass, 16 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, and a real out-of-Warsaw location grant) |
 
 Also observed:
 
@@ -1046,10 +1104,15 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-018 — Outside-Warsaw behaviour` per `PLAN.md`: "users outside
-   supported geography receive a clear supported-area message/manual
-   Warsaw map path." Needs a `tasks/018-*.md` file. This is a distinct
-   concern from `TASK-017`'s radius-exhausted state
-   (`docs/adr/0012-no-results-diagnosis.md`'s own closing note): "far
-   outside Warsaw" and "inside Warsaw but genuinely thin" are different
-   causes and must not be conflated into one message.
+2. `TASK-019 — Data confidence display` per `PLAN.md` (Milestone 3 — Trust
+   layer): "low/medium/high confidence can be surfaced where it improves
+   user decisions without clutter." Needs a `tasks/019-*.md` file.
+   `confidence_level` already exists end to end (schema, nearby response,
+   the detail sheet's `PEWNOŚĆ DANYCH: NISKA` hint since `TASK-011`) but is
+   always `'low'` today — nothing in the pipeline produces `'medium'` or
+   `'high'` yet (`docs/adr/0007-recommendation-ranking-formula.md`'s own
+   note). This task's real scope is worth reading `PRODUCT.md`'s
+   confidence-related sections closely before starting: it may be more
+   about surfacing the existing value usefully elsewhere (map markers,
+   list rows) than about computing new confidence levels, which could
+   need a second data source (`TASK-022`) to be meaningful.
