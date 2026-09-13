@@ -22,6 +22,17 @@ pnpm research:probe -- --full  # also tag coverage over Warsaw toilet elements
 Output goes to `.research-output/`, which is gitignored. Raw source dumps must
 not be committed.
 
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | the catalogue returned at least one dataset |
+| 1 | every request failed |
+| 2 | some requests succeeded but the catalogue returned no dataset |
+
+Code 2 exists because a run can succeed at OpenStreetMap and still answer
+nothing about the Warsaw dataset, which is the main question of TASK-002.
+
 Notes:
 
 - The script asserts nothing. Anything it did not observe is written as
@@ -32,6 +43,10 @@ Notes:
   the report then records the denial.
 - Datastore sampling is capped at ten resources per run and uses `limit=1`, so
   a run makes a few dozen small requests at most.
+- Each failure in the report carries the response content type and the first 240
+  characters of the body, so a bare status code explains itself.
+- Overpass returns 429, 503 or 504 under load. Each Overpass query is retried
+  once after a 20 second pause, and no more than once.
 - The bounding box in the script is a probe convenience. The project's real area
   definition is for TASK-002 to decide and record.
 - Overpass is queried a small number of times per run, in line with its usage

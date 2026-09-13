@@ -74,6 +74,30 @@ repository: 18 requests, every one answered HTTP 403 by the egress proxy, raw
 bodies saved, report written with the schema section marked UNVERIFIED, exit
 code 1. That is the failure path behaving as designed, not a result.
 
+First run from an environment that permits the hosts, reported by the project
+owner on 2026-09-13:
+
+- Overpass answered HTTP 200 for the `amenity=toilets` count, and HTTP 504 for
+  the venue `toilets=*` count.
+- All 16 Warsaw catalogue requests answered HTTP 503. Both hosts, both CKAN
+  paths, all four search terms. A 503 is a response from Warsaw's own servers,
+  unlike the proxy's 403, so the network allowlist works and the catalogue
+  itself did not serve the request.
+- No dataset, field list, record count, example record or licence has therefore
+  been observed. Every one of them remains UNVERIFIED.
+
+What the 503 means is not yet known. It could be the service being down, the
+CKAN assumption in the probe being wrong for the current platform, or a gateway
+refusing the request. The probe now records the content type and the first 240
+characters of every failed body, so the next run distinguishes these instead of
+reporting a bare status code. The Overpass 504 is ordinary overload, and each
+Overpass query is now retried once after a pause.
+
+The run also exposed a reporting defect the owner spotted: the script exited 0
+because a single request succeeded, although the catalogue question it exists to
+answer was untouched. It now exits 2 in that case, and 1 only when everything
+fails.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local

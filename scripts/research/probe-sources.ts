@@ -14,6 +14,12 @@
  * Requires outbound access to api.um.warszawa.pl, dane.um.warszawa.pl and
  * overpass-api.de. Sandboxed agent environments commonly deny all three; the
  * report then records the denial, which is a blocker, not a result.
+ *
+ * Exit codes:
+ *   0  the catalogue returned at least one dataset
+ *   1  every request failed
+ *   2  some requests succeeded but the catalogue returned no dataset, so the
+ *      main question of TASK-002 is still unanswered
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -64,6 +70,13 @@ const MAX_DATASTORE_SAMPLES = 10;
 const CATALOGUE_TIMEOUT_MS = 30_000;
 const OVERPASS_TIMEOUT_MS = 180_000;
 
+/** Overpass answers 429/503/504 under load; one retry after a pause is within its policy. */
+const OVERPASS_RETRY_STATUSES = [429, 503, 504];
+const OVERPASS_RETRY_DELAY_MS = 20_000;
+
+/** How much of a failed response body the report quotes, so a 503 explains itself. */
+const SNIPPET_CHARS = 240;
+
 interface Probe {
   label: string;
   url: string;
@@ -73,6 +86,8 @@ interface Probe {
   contentType: string | null;
   bytes: number | null;
   savedAs: string | null;
+  /** Start of the body, whitespace collapsed, so a failure explains itself. */
+  snippet: string | null;
   error: string | null;
 }
 
@@ -122,6 +137,7 @@ async function probe(
       contentType: response.headers.get('content-type'),
       bytes: Buffer.byteLength(text),
       savedAs,
+      snippet: text.replace(/\s+/g, ' ').trim().slice(0, SNIPPET_CHARS) || null,
       error: null,
     });
     process.stdout.write(`  ${response.ok ? 'ok  ' : 'FAIL'} ${response.status} ${label}\n`);
@@ -137,11 +153,26 @@ async function probe(
       contentType: null,
       bytes: null,
       savedAs: null,
+      snippet: null,
       error: message,
     });
     process.stdout.write(`  FAIL ---  ${label}: ${message}\n`);
     return null;
   }
+}
+
+/** Posts one Overpass query, retrying once when the server reports overload. */
+async function probeOverpass(label: string, query: string): Promise<string | null> {
+  const body = `data=${encodeURIComponent(query)}`;
+  const raw = await probe(label, OVERPASS_ENDPOINT, body, OVERPASS_TIMEOUT_MS);
+  if (raw) return raw;
+
+  const last = probes[probes.length - 1];
+  if (!last || last.status === null || !OVERPASS_RETRY_STATUSES.includes(last.status)) return null;
+
+  process.stdout.write(`  retrying once after ${OVERPASS_RETRY_DELAY_MS / 1000}s: ${label}\n`);
+  await new Promise((resolve) => setTimeout(resolve, OVERPASS_RETRY_DELAY_MS));
+  return probe(`${label} retry`, OVERPASS_ENDPOINT, body, OVERPASS_TIMEOUT_MS);
 }
 
 const OVERPASS_TOILETS_COUNT = `[out:json][timeout:180];
@@ -171,7 +202,12 @@ async function main(): Promise<void> {
   await mkdir(OUTPUT_DIR, { recursive: true });
   const startedAt = new Date().toISOString();
 
-  process.stdout.write('Warsaw dataset catalogue\n');
+  // A plain GET on each host separates "host down" from "API path wrong" when
+  // the catalogue calls below fail.
+  process.stdout.write('Catalogue hosts\n');
+  for (const host of CATALOGUE_HOSTS) await probe(`host root ${host}`, `${host}/`);
+
+  process.stdout.write('\nWarsaw dataset catalogue\n');
   const datasets: CatalogueDataset[] = [];
   for (const host of CATALOGUE_HOSTS) {
     for (const path of CKAN_PATHS) {
@@ -215,27 +251,15 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write('\nOpenStreetMap via Overpass\n');
-  const toiletsRaw = await probe(
-    'overpass amenity toilets count',
-    OVERPASS_ENDPOINT,
-    `data=${encodeURIComponent(OVERPASS_TOILETS_COUNT)}`,
-    OVERPASS_TIMEOUT_MS,
-  );
-  const venueRaw = await probe(
+  const toiletsRaw = await probeOverpass('overpass amenity toilets count', OVERPASS_TOILETS_COUNT);
+  const venueRaw = await probeOverpass(
     'overpass venue toilets count',
-    OVERPASS_ENDPOINT,
-    `data=${encodeURIComponent(OVERPASS_VENUE_TOILETS_COUNT)}`,
-    OVERPASS_TIMEOUT_MS,
+    OVERPASS_VENUE_TOILETS_COUNT,
   );
 
   let coverage: TagCoverage | null = null;
   if (FULL) {
-    const fullRaw = await probe(
-      'overpass amenity toilets tags',
-      OVERPASS_ENDPOINT,
-      `data=${encodeURIComponent(OVERPASS_TOILETS_FULL)}`,
-      OVERPASS_TIMEOUT_MS,
-    );
+    const fullRaw = await probeOverpass('overpass amenity toilets tags', OVERPASS_TOILETS_FULL);
     if (fullRaw) coverage = readTagCoverage(fullRaw);
   }
 
@@ -268,7 +292,9 @@ async function main(): Promise<void> {
   if (failures.length > 0) {
     lines.push('### Failures', '');
     for (const item of failures) {
-      lines.push(`- ${item.label}: ${item.error ?? `HTTP ${item.status ?? 'unknown'}`}`);
+      const type = item.contentType ? ` (${item.contentType})` : '';
+      lines.push(`- ${item.label}: ${item.error ?? `HTTP ${item.status ?? 'unknown'}${type}`}`);
+      if (item.snippet) lines.push(`  body starts: ${item.snippet}`);
     }
     lines.push('');
   }
@@ -395,6 +421,11 @@ async function main(): Promise<void> {
   if (failures.length === probes.length) {
     process.stdout.write('\nEvery request failed. This is a blocker, not a result.\n');
     process.exitCode = 1;
+  } else if (unique.size === 0) {
+    process.stdout.write(
+      '\nThe catalogue returned no dataset. The main question of TASK-002 is still unanswered.\n',
+    );
+    process.exitCode = 2;
   }
 }
 
