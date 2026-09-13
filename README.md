@@ -21,7 +21,7 @@ selected plan provides PostGIS before provisioning.
 ```bash
 pnpm install --frozen-lockfile
 cp .env.example .env.local   # then fill in DATABASE_URL
-pnpm db:migrate              # enables PostGIS in the target database
+pnpm db:migrate              # enables PostGIS and creates the toilet schema
 pnpm db:check                # verifies the extension is installed
 ```
 

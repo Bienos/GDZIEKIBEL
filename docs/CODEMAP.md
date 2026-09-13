@@ -30,10 +30,14 @@ app/
   tokens.css          design tokens (colour, spacing, type) — single source
 lib/
   env/server.ts       the only validated reader of server environment variables
+  toilets/
+    source-record.ts  SourceToiletRecord contract as a Zod schema (adapter `validate` step)
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
-  migrations/         timestamped SQL migrations run by node-pg-migrate
+  migrations/         timestamped SQL migrations run by node-pg-migrate:
+                      enable-postgis (TASK-001); toilet-schema (TASK-003):
+                      toilets, toilet_source_records, ingestion_runs
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   research/           one-off source probes; not application code, not in CI
@@ -72,9 +76,11 @@ Ownership:
 - `docs/adr/0002-toilet-data-sources.md` — first ingestion sources, OSM
   licence/share-alike position, extract-not-live decision, field-level source
   table, city-dataset blocker.
+- `docs/adr/0003-toilet-schema.md` — where the created schema departs from
+  the suggested fields in `ARCHITECTURE.md` 5, and why.
 - `docs/contracts/toilet-sources.md` — normalised source record and per-source
   mapping the ingestion adapters consume (OSM, metro rule, curated hubs; city
-  dataset reserved).
+  dataset reserved). Executable form: `lib/toilets/source-record.ts`.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
   see `docs/research/README.md`.
 
@@ -84,5 +90,6 @@ Ownership:
 
 ## Not yet created
 
-No map, geolocation, toilet domain schema, ingestion, ranking, reporting,
-analytics or error-tracking code exists. Those areas are owned by later tasks.
+No map, geolocation, ingestion adapters, reconciliation, nearby API, ranking,
+reporting (`toilet_reports`), analytics or error-tracking code exists. Those
+areas are owned by later tasks.

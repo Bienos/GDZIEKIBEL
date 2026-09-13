@@ -17,6 +17,14 @@ provenance per `ARCHITECTURE.md` 5.2.
 Every adapter emits zero or more `SourceToiletRecord`s. Unknown is `null`.
 An adapter never emits `false` for a value the source did not state.
 
+Executable definition: `lib/toilets/source-record.ts` (Zod schema and
+`parseSourceToiletRecord`). Storage: one row per record in
+`toilet_source_records` (migration `1789302217027_toilet-schema.sql`, ADR 0003),
+with the parsed record in `normalized_payload`, the source element in
+`raw_payload`, and `source_name`, `source_record_id`, `source_url`,
+`source_updated_at`, `fetched_at` as columns. Canonical values land in
+`toilets` after reconciliation (TASK-004).
+
 ```text
 SourceToiletRecord
   source_name          'osm' | 'metro-rule' | 'hub-curated'      (city adapter: not yet)

@@ -10,9 +10,10 @@
 - Approved visual reference: `docs/design/reference/gdziekibel-approved-direction.png`.
 - Production application code: foundation only (TASK-001). Next.js App Router
   application with a minimal shell page. No product feature is implemented.
-- Database migrations: one baseline migration,
-  `db/migrations/1789277236377_enable-postgis.sql`, which only enables the
-  PostGIS extension. No product-domain tables exist.
+- Database migrations: `1789277236377_enable-postgis.sql` (PostGIS) and
+  `1789302217027_toilet-schema.sql` (TASK-003: `toilets`,
+  `toilet_source_records`, `ingestion_runs`). No `toilet_reports` table yet.
+  Tables are empty; no ingestion exists.
 - Deployment: not deployed. Vercel-compatible configuration exists
   (`vercel.json`) and the preview path is documented in `README.md`.
 
@@ -95,6 +96,47 @@ facilities once verified.
 Repository checks after the change: `pnpm lint`, `pnpm format:check`,
 `pnpm typecheck` and `pnpm test:unit` (23 tests, 3 files) all pass on
 2026-09-13. No application code, schema or dependency changed.
+
+### TASK-003 — Canonical toilet schema + first source contract
+
+Specified in `tasks/003-canonical-toilet-schema.md` (written at the start of
+the task, from the `PLAN.md` entry, `ARCHITECTURE.md` 4/5/6/19 and the TASK-002
+contract). Implemented on 2026-09-13:
+
+- `db/migrations/1789302217027_toilet-schema.sql` — `toilets` (geography
+  point, GiST index, CHECK-constrained sets, three-state facility columns),
+  `toilet_source_records` (unique `(source_name, source_record_id)`,
+  `source_url NOT NULL`, `missing_since`, FK `ON DELETE SET NULL`),
+  `ingestion_runs` (nullable counts, lifecycle CHECKs), one `updated_at`
+  trigger function. Down migration drops exactly those objects.
+- `lib/toilets/source-record.ts` — `SourceToiletRecord` Zod schema and
+  `parseSourceToiletRecord`; strict objects, unknown → `null`, booleans only,
+  http(s) `source_url`, bounded WGS84 position, no value echoed in errors.
+- `tests/unit/source-record.test.ts` (10 tests) and
+  `tests/integration/toilet-schema.test.ts` (10 tests against real PostGIS).
+- `docs/adr/0003-toilet-schema.md` — departures from the suggested fields.
+- `docs/contracts/toilet-sources.md` points at the module and tables;
+  `docs/CODEMAP.md` and `README.md` updated.
+
+Verification observed on 2026-09-13 against local PostgreSQL 16.13 with
+PostGIS 3.4.2 (package installed in the session; the cluster was present but
+stopped), database `gdziekibel_test`:
+
+| Command | Result |
+| --- | --- |
+| `pnpm lint` | pass |
+| `pnpm format:check` | pass |
+| `pnpm typecheck` | pass |
+| `pnpm test:unit` | pass, 33 tests in 4 files |
+| `pnpm db:migrate` (empty DB) | pass, both migrations applied |
+| `pnpm db:migrate:down` | pass; `to_regclass` of all three tables and the function count read NULL/0 afterwards |
+| `pnpm db:migrate` (again) | pass |
+| `pnpm db:check` | `PostGIS OK — installed version 3.4.2` |
+| `pnpm test:integration` | pass, 12 tests in 2 files |
+| `pnpm build` | pass, `/` and `/_not-found` static |
+
+No adapter, reconciliation, API, UI or report code was created. No dependency
+changed.
 
 ## Verification at current baseline
 
@@ -193,7 +235,8 @@ Not verifiable in this environment, and therefore not claimed:
 
 ## Next approved task
 
-`TASK-003 — Canonical toilet schema + first source contract`, per `PLAN.md`.
-Its input is `docs/contracts/toilet-sources.md` and ADR 0002. The TASK-002
-city-dataset blocker does not stop TASK-003 or the OSM part of TASK-004; it
-stops only the city adapter.
+`TASK-004 — Ingest first Warsaw toilet dataset`, per `PLAN.md`. No task file
+exists yet. Inputs: `docs/contracts/toilet-sources.md`,
+`lib/toilets/source-record.ts`, ADR 0002 D3–D6 and ADR 0003. The TASK-002
+city-dataset blocker stops only the city adapter, not the OSM, metro-rule or
+hub-curated adapters.
