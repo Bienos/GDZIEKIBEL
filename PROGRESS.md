@@ -10,9 +10,10 @@
 - Approved visual reference: `docs/design/reference/gdziekibel-approved-direction.png`.
 - Production application code: foundation only (TASK-001). Next.js App Router
   application with a minimal shell page. No product feature is implemented.
-- Database migrations: one baseline migration,
-  `db/migrations/1789277236377_enable-postgis.sql`, which only enables the
-  PostGIS extension. No product-domain tables exist.
+- Database migrations: two. `1789277236377_enable-postgis.sql` enables the
+  extension; `1789312508934_toilet-schema.sql` creates `toilets`,
+  `toilet_source_records`, `ingestion_runs` and their enumerated types. The
+  tables hold no rows.
 - Deployment: not deployed. Vercel-compatible configuration exists
   (`vercel.json`) and the preview path is documented in `README.md`.
 
@@ -141,6 +142,36 @@ The one run that returned HTTP 200 from Overpass on 2026-09-13 produced a
 count, but the value was not carried into the repository. It is not recorded
 here because it was not seen here.
 
+### TASK-003 — Canonical toilet schema + first source contract
+
+Complete on 2026-09-13. Specified in `tasks/003-canonical-toilet-schema.md`.
+
+Created: one reversible SQL migration with six enumerated types, the three
+tables from `ARCHITECTURE.md` section 5 minus `toilet_reports` (TASK-020),
+GiST indexes on both geography columns, and trigger-maintained `updated_at`.
+Every inferable attribute is an enum with an explicit `unknown` member as its
+default; no boolean defaults to `false`. TypeScript mirrors the enums in
+`lib/toilets/types.ts`, and a test reads the migration to keep them in step.
+The adapter contract is `lib/toilets/normalized-source-record.ts`, a strict
+Zod schema that requires every field so an adapter must state `unknown` on
+purpose. `docs/adr/0004-schema-conventions.md` records each departure from the
+architecture with its reason.
+
+Observed:
+
+- the migration applies to an empty PostGIS database and `pnpm db:check`
+  passes afterwards;
+- `pnpm db:migrate:down` drops exactly the objects the up step created, leaves
+  PostGIS installed, and `pnpm db:migrate` recreates them; integration tests
+  pass again after the round trip;
+- ten integration tests prove the unknown defaults, enum rejection, the
+  `ST_DWithin` radius query, the GiST index, the unique constraint on source
+  records, the `updated_at` trigger, unlink-not-delete on toilet removal, and
+  the ingestion run time check.
+
+Not created, by design: any row, any adapter, any query module, any report
+table.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -176,11 +207,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 39 tests in 4 files                            |
+| `pnpm test:unit`          | pass, 59 tests in 7 files                            |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
-| `pnpm db:migrate`         | pass, baseline applied to an empty database          |
+| `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 2 tests                                        |
+| `pnpm test:integration`   | pass, 12 tests in 2 files                            |
 | `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project       |
 
 Also observed:
@@ -257,10 +288,11 @@ Not verifiable in this environment, and therefore not claimed:
 
 ## Next approved task
 
-`TASK-003 — Canonical toilet schema + first source contract` per `PLAN.md`.
-Not yet specified; a `tasks/003-*.md` file must be written first. Its inputs
-are ADR 0003 section 7 and the contract's sections 4 to 7.
+`TASK-004 — Ingest first Warsaw toilet dataset` per `PLAN.md`. Not yet
+specified; a `tasks/004-*.md` file must be written first. Its inputs are
+`docs/contracts/osm-toilets-source.md`, ADR 0003 sections 2 to 4, and the Zod
+schema in `lib/toilets/normalized-source-record.ts`. It needs network access to
+Overpass, which the GdzieKibel cloud environment provides and this session does
+not.
 
-TASK-002 remains open only for the observation gaps in its table above. They do
-not block TASK-003, which designs for unknowns regardless of what the counts
-turn out to be.
+TASK-002 remains open only for the observation gaps in its table above.

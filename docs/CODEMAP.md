@@ -32,10 +32,16 @@ app/
 lib/
   env/server.ts       the only validated reader of server environment variables
   i18n/               supported locales and the copy dictionaries
+  toilets/types.ts    enumerated values of the toilet model, mirroring the SQL types
+  toilets/normalized-source-record.ts
+                      Zod schema an ingestion adapter must emit (contract section 6)
+  geo/warsaw.ts       coarse Warsaw bounding box; the boundary check is TASK-004's
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
   migrations/         timestamped SQL migrations run by node-pg-migrate
+    *_enable-postgis.sql   baseline: the extension only
+    *_toilet-schema.sql    toilets, toilet_source_records, ingestion_runs, enums
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   research/           one-off source probes; not application code, not in CI
@@ -74,6 +80,9 @@ Ownership:
 - `docs/adr/0002-locale-in-the-url.md` — why the locale is a route segment.
 - `docs/adr/0003-first-data-source.md` — OpenStreetMap first, city dataset
   deferred, field-level source table, consequences for the schema.
+- `docs/adr/0004-schema-conventions.md` — unknown is a value, trigger-maintained
+  timestamps, never-delete provenance, and every departure from
+  `ARCHITECTURE.md` section 5 with its reason.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -85,5 +94,6 @@ Ownership:
 
 ## Not yet created
 
-No map, geolocation, toilet domain schema, ingestion, ranking, reporting,
-analytics or error-tracking code exists. Those areas are owned by later tasks.
+No map, geolocation, ingestion, nearby query, ranking, reporting, analytics
+or error-tracking code exists. The toilet schema exists but holds no rows.
+Those areas are owned by later tasks.
