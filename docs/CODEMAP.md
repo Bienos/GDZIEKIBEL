@@ -31,6 +31,12 @@ app/
                       POST only; bounded nearby active toilets, filtered
                       (TASK-016, ADR 0011) and reordered by
                       rankNearbyToilets (TASK-009)
+  api/toilets/[id]/reports/route.ts
+                      POST only; a validated, anonymous report (TASK-020,
+                      ADR 0015): 400 for a malformed id or invalid body,
+                      404 for a well-formed but unknown toilet id, 201 with
+                      the created report's id on success; no rate-limiting
+                      (TASK-021's job)
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -66,8 +72,16 @@ components/
   map/ToiletDetailSheet.tsx
                       toilet detail sheet (TASK-011): name, distance/ETA,
                       status/price, a real navigation CTA (TASK-012),
-                      accessibility features, confidence hint; no hours or
-                      report control yet (see the task file for why)
+                      accessibility features, confidence hint, and a report
+                      control (TASK-020, ADR 0015) that opens ReportSheet in
+                      place of this sheet; no hours yet (see the task file
+                      for why)
+  map/ReportSheet.tsx  the report flow (TASK-020, DESIGN.md 9.4 position 8,
+                      ADR 0015): the seven BRAND.md "Reporting" reasons as
+                      radios, an optional note, WYŚLIJ ZGŁOSZENIE; success
+                      replaces the form, failure keeps whatever was picked/
+                      typed so retrying is not starting over; no
+                      rate-limiting (TASK-021's job)
   map/FiltersSheet.tsx
                       the five MVP filters (TASK-016, DESIGN.md 9.6): four
                       sections, toggles bound to a draft state; POKAŻ WYNIKI
@@ -167,6 +181,15 @@ lib/
                       builds a destination-only Google Maps walking URL
                       (TASK-012, ADR 0008); Apple Maps deferred until a
                       session can test real app-opening behaviour
+  reports/types.ts    the seven MVP issue types (TASK-020, ADR 0015),
+                      mirroring the SQL toilet_report_issue_type enum
+  reports/report-request.ts
+                      validates a report request body and the toilet :id
+                      path segment (TASK-020); a malformed id is a 400, a
+                      well-formed but absent one is the route's own 404
+  reports/submit-report.ts
+                      client-side call to POST /api/toilets/:id/reports;
+                      never throws; a blank note is omitted, never sent as ''
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
@@ -184,6 +207,9 @@ db/
                       price_amount_minor/currency/payment_methods since
                       TASK-014, and verified_at/access_raw since TASK-019 (in
                       place of the unused confidence_level column)
+  queries/reports.ts  toiletExists and insertReport (TASK-020, ADR 0015);
+                      thin, source-agnostic, no location/IP/device data ever
+                      written
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -192,6 +218,9 @@ db/
     *_toilet-schema.sql    toilets, toilet_source_records, ingestion_runs, enums
     *_add-confidence-access-raw.sql
                       adds toilets.access_raw (TASK-019, ADR 0014)
+    *_add-toilet-reports.sql
+                      adds toilet_reports, toilet_report_issue_type,
+                      toilet_report_status (TASK-020, ADR 0015)
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -276,6 +305,11 @@ Ownership:
   column; `'high'` stays unreachable until real cross-source corroboration
   exists (`TASK-022`), resolving `PRODUCT.md` section 9's own HIGH/LOW
   wording tension conservatively.
+- `docs/adr/0015-toilet-reports.md` — `issue_type` is a real enum, not
+  `text`, mirroring `BRAND.md`'s seven reasons exactly; existence checked
+  before insert rather than a raw FK violation; `status` exists with a
+  default but nothing reads it yet; no rate-limiting or abuse metadata
+  (`TASK-021`'s job); no location, IP, or device identifier ever stored.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -338,12 +372,18 @@ verified within the last year with a non-uncertain access basis, `LOW`
 otherwise, `HIGH` deliberately unreachable until a second source can
 actually corroborate one (`TASK-022`) — the already-built detail-sheet
 confidence hint and the opening-status qualification (`TASK-011`, ADR
-0009) both pick this up with no further change. The report control still
-does not exist on the detail sheet (`TASK-020`'s job). No deduplication,
-reporting, analytics or error-tracking code exists. Ingestion exists but
-has never run against the live source — so the opening-hours and charge
-parsers, and now the confidence computation, have never seen a real OSM
-string, only constructed fixtures matching their documented grammars — and
-the map — tiles, the location dot, and the toilet markers — has never been
-visually observed rendering for real from this session. Those areas are
-owned by later tasks.
+0009) both pick this up with no further change. A validated, anonymous
+report can now be submitted (TASK-020, ADR 0015): `ZGŁOŚ PROBLEM` on the
+detail sheet opens `ReportSheet`'s seven `BRAND.md` reasons plus an
+optional note, `POST /api/toilets/:id/reports` checks the toilet exists
+before inserting, and the stored row carries no location, IP, or device
+identifier — verified with a real curl smoke test against a running
+production build and a real PostGIS database, insert/404/400 all
+observed. No moderation UI reads `toilet_reports.status` yet, and no
+rate-limiting exists (`TASK-021`'s job). No deduplication, analytics or
+error-tracking code exists. Ingestion exists but has never run against the
+live source — so the opening-hours and charge parsers, and the confidence
+computation, have never seen a real OSM string, only constructed fixtures
+matching their documented grammars — and the map — tiles, the location
+dot, and the toilet markers — has never been visually observed rendering
+for real from this session. Those areas are owned by later tasks.

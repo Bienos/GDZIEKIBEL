@@ -335,6 +335,110 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
   await expect(preview).toBeVisible();
 });
 
+const REPORT_TEST_TOILET = {
+  id: '33333333-3333-4333-8333-333333333333',
+  name: 'Toaleta Zgłoszeniowa',
+  lat: 52.2297,
+  lng: 21.0122,
+  distanceMeters: 150,
+  approxWalkingMinutes: 2,
+  openingStatus: 'UNKNOWN',
+  priceState: 'unknown',
+  priceAmountMinor: null,
+  currency: null,
+  confidenceLevel: 'low',
+  accessType: 'unknown',
+  features: { wheelchair: 'unknown', changingTable: 'unknown', unisex: 'unknown' },
+  paymentMethods: { cash: 'unknown', cards: 'unknown', coins: 'unknown' },
+};
+
+async function openReportTestDetailSheet(page: import('@playwright/test').Page) {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ results: [REPORT_TEST_TOILET] }),
+    }),
+  );
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+  await page
+    .getByRole('button', { name: `Otwórz szczegóły toalety: ${REPORT_TEST_TOILET.name}` })
+    .click();
+  await expect(page.getByRole('heading', { name: REPORT_TEST_TOILET.name })).toBeVisible();
+}
+
+test('the report control opens the report sheet, and a successful submission shows the success copy (TASK-020)', async ({
+  page,
+}) => {
+  const requestBodies: unknown[] = [];
+  await page.route(`**/api/toilets/${REPORT_TEST_TOILET.id}/reports`, async (route) => {
+    requestBodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, reportId: '44444444-4444-4444-4444-444444444444' }),
+    });
+  });
+
+  await openReportTestDetailSheet(page);
+
+  await page.getByRole('button', { name: 'ZGŁOŚ PROBLEM' }).click();
+
+  const heading = page.getByRole('heading', { name: 'CO JEST NIE TAK?' });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+
+  await page.getByRole('radio', { name: 'Godziny są złe' }).check();
+  await page.getByLabel('Szczegóły (opcjonalnie)').fill('Zamknięte już o 20');
+  await page.getByRole('button', { name: 'WYŚLIJ ZGŁOSZENIE' }).click();
+
+  await expect(page.getByText('DZIĘKI. SPRAWDZIMY.')).toBeVisible();
+  expect(requestBodies).toEqual([{ issueType: 'wrong_hours', note: 'Zamknięte już o 20' }]);
+
+  // Closing from the success state returns to the toilet's own detail
+  // sheet, not all the way back to the map (ReportSheet's onClose scopes
+  // to ToiletDetailSheet's local reportOpen state).
+  await page.getByRole('button', { name: 'ZAMKNIJ' }).click();
+  await expect(page.getByRole('heading', { name: REPORT_TEST_TOILET.name })).toBeVisible();
+});
+
+test('a failed report submission shows a literal failure message and lets the user retry without losing their input (TASK-020)', async ({
+  page,
+}) => {
+  let attempt = 0;
+  await page.route(`**/api/toilets/${REPORT_TEST_TOILET.id}/reports`, async (route) => {
+    attempt += 1;
+    if (attempt === 1) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, reportId: '55555555-5555-5555-5555-555555555555' }),
+    });
+  });
+
+  await openReportTestDetailSheet(page);
+  await page.getByRole('button', { name: 'ZGŁOŚ PROBLEM' }).click();
+
+  const reason = page.getByRole('radio', { name: 'Nie istnieje' });
+  await reason.check();
+  await page.getByRole('button', { name: 'WYŚLIJ ZGŁOSZENIE' }).click();
+
+  await expect(page.getByText('Nie udało się wysłać zgłoszenia.')).toBeVisible();
+  const retry = page.getByRole('button', { name: 'SPRÓBUJ PONOWNIE' });
+  await expect(retry).toBeVisible();
+  await expect(reason).toBeChecked();
+
+  await retry.click();
+
+  await expect(page.getByText('DZIĘKI. SPRAWDZIMY.')).toBeVisible();
+  expect(attempt).toBe(2);
+});
+
 test('a real OPEN status renders its own label and colour, not the uncertain one (TASK-013)', async ({
   page,
 }) => {

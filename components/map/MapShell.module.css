@@ -605,3 +605,23 @@
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
+
+/* The report sheet's optional note field (TASK-020, DESIGN.md 9.4 position
+   8). The first free-text input this project renders; a plain bordered box
+   matching the visual weight of .filterOption's checkboxes/radios rather
+   than inventing a new input style. */
+.reportNote {
+  width: 100%;
+  min-height: 88px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--type-body-size);
+  resize: vertical;
+}
+
+.reportNote:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}

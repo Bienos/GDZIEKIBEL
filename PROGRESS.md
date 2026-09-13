@@ -1052,6 +1052,81 @@ any change to the ranking formula (`docs/adr/0007`'s own "Not decided
 here" territory), and any new UI (`DESIGN.md` already places the hint,
 `TASK-011` already built it).
 
+### TASK-020 — Report incorrect toilet data
+
+Complete on 2026-09-13. Specified in `tasks/020-report-incorrect-data.md`;
+decision recorded in `docs/adr/0015-toilet-reports.md`.
+
+**`issue_type` is a real enum, matching every other categorical column.**
+`ARCHITECTURE.md` section 5.3 suggests `issue_type text not null`, but
+`access_type`/`price_state`/`feature_state`/`canonical_status`/
+`confidence_level` are all real Postgres `ENUM`s, and
+`docs/adr/0004-schema-conventions.md` already recorded exactly this
+reasoning for `access_type`. The seven enum members mirror `BRAND.md`'s
+"Reporting" reasons exactly, in the same order `PRODUCT.md` section 6.4
+lists them (`closed`/`does_not_exist`/`wrong_hours`/`wrong_price`/
+`access_denied`/`wrong_accessibility`/`other`).
+
+**`status` exists, defaults to `'new'`, nothing reads it yet.** The same
+shape of decision `docs/adr/0004` already made for `confidence_level` in
+`TASK-003` — created and defaulted now, acted on by a later task if one
+ever needs to. `PRODUCT.md` section 6.4's own rule ("a report must not
+immediately rewrite canonical data without moderation or confidence
+logic") means this task's job stops at storing the report.
+
+**Existence checked before insert.** `toilet_id references toilets(id)`
+with no `ON DELETE` clause (toilets are never actually deleted — the same
+reasoning `lib/ingest/upsert.ts` already established). The route checks
+the toilet exists first and returns a clean `404` rather than letting a
+foreign-key violation surface as an undifferentiated `500`.
+
+**No rate-limiting, no abuse metadata, no location.** `PRODUCT.md` FR-08
+bundles "validated and rate-limited"; `PLAN.md` splits them across
+`TASK-020` and `TASK-021` — this task implements only the former.
+`ARCHITECTURE.md` section 5.3's own "do not store precise user location
+with a report" is followed literally: the request body carries only
+`issueType` and an optional `note`.
+
+Created: a migration adding `toilet_reports`, `toilet_report_issue_type`,
+`toilet_report_status`. `lib/reports/types.ts` (`ISSUE_TYPES`),
+`lib/reports/report-request.ts` (`parseReportRequest`, `parseToiletId`),
+`lib/reports/submit-report.ts` (the client-side POST, mirroring
+`fetch-nearby.ts`'s never-throws shape). `db/queries/reports.ts`
+(`toiletExists`, `insertReport`). `app/api/toilets/[id]/reports/route.ts`
+(400 for a malformed id or invalid body, 404 for an unknown toilet, 201
+with the created report's id on success). `components/map/ReportSheet.tsx`
+(the seven reasons as radios, an optional note, success replaces the form,
+failure keeps whatever was picked/typed) and a `ZGŁOŚ PROBLEM` control on
+`ToiletDetailSheet.tsx` (position 8, `DESIGN.md` section 9.4) that opens
+it in place of the detail sheet, `onClose` returning to the detail sheet
+rather than closing everything. 14 new `Dictionary` keys.
+
+Verified: lint, format, typecheck, 225 unit tests (19 new — `parseReportRequest`/
+`parseToiletId` exhaustively, `submitReport`'s request-shaping, and an
+enum-parity test reading the migration directly, the same technique
+`tests/unit/toilets-types.test.ts` already uses), 36 integration tests (4
+new: a real insert with no location columns, `toiletExists` telling a real
+toilet from a random UUID, a blank note stored as `null`, and the SQL enum
+itself rejecting an unrecognised `issue_type` — proven at the database
+level, not just in application code), the production build, a real curl
+smoke test against a running production build and a real PostGIS database
+(a genuine insert returning `201`, an invalid `issueType` returning `400`
+with the exact enum-member list, a well-formed but unknown toilet id
+returning `404`, a malformed id returning `400` — the inserted row
+independently verified to carry no location and `status = 'new'`), and 18
+Playwright tests (2 new: a full success flow — open the report sheet from
+the detail sheet, pick a reason, add a note, submit, see `DZIĘKI.
+SPRAWDZIMY.`, close back to the detail sheet, not the map — and a failure
+flow — a `500` shows the literal failure copy with the picked reason still
+checked, retrying against a route that now succeeds shows the same success
+copy). All 16 pre-existing Playwright tests still pass unmodified.
+
+Not created, by design: any rate-limiting or abuse metadata (`TASK-021`'s
+job), any moderation UI or a path that ever changes a report's `status`,
+any way for a report to rewrite canonical `toilets` data, and the detail
+sheet's still-missing "hours" line (`TASK-011`'s own, separate, unrelated
+gap).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1087,12 +1162,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 206 tests in 27 files                          |
+| `pnpm test:unit`          | pass, 225 tests in 30 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 32 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 16 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, and a real out-of-Warsaw location grant) |
+| `pnpm test:integration`   | pass, 36 tests in 5 files                            |
+| `pnpm test:e2e`           | pass, 18 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, and the report flow's success and failure/retry states) |
 
 Also observed:
 
@@ -1184,23 +1259,25 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-020 — Report incorrect toilet data` per `PLAN.md`: "anonymous
-   validated report can be submitted." Needs a `tasks/020-*.md` file.
-   `PRODUCT.md` section 8 already names `toilet_report` as a core entity
-   and `ARCHITECTURE.md` section 5.3 already sketches its schema
-   (`toilet_id`, `issue_type`, `note`, `status enum('new','reviewed',
-   'accepted','rejected')`) — this task most likely creates the table via
-   a migration, a report endpoint, and a report control on the detail
-   sheet (`docs/adr/0009-opening-hours-status.md`'s consequences section
-   already notes the detail sheet has no report control yet). `PRODUCT.md`
-   section 6.4 (the report reasons and the no-immediate-rewrite rule) and
-   section 13's FR-08 (no account, must not expose private user data) are
-   worth reading closely before scoping: "anonymous" and "validated" both need
-   concrete rules (what makes a report valid, and — this project's
-   existing privacy discipline — that "anonymous" means no IP/device
-   fingerprint is stored, not merely no login). A report must not rewrite
-   canonical data on submission (`PRODUCT.md` section 6.4's own rule);
-   this task's scope should stop at accepting and storing a report, not
-   building a moderation workflow, unless `TASK-021`'s abuse controls turn
-   out to depend on it. `TASK-011`'s task file already deferred a report
-   control specifically until this task exists.
+2. `TASK-021 — Report abuse protection` per `PLAN.md`: "report endpoint has
+   measured rate/abuse controls without storing unnecessary personal
+   data." Needs a `tasks/021-*.md` file. `ARCHITECTURE.md` section 16
+   already lists "report endpoint spam" as an MVP threat priority and
+   "rate limiting for report writes" as a required control; section 20
+   names "report rate-limit provider key only if one is adopted" as a
+   possible environment variable, and section 23's own "decisions still
+   requiring validation" explicitly flags "whether report rate limiting
+   needs an external store/provider" as unresolved — this is the real
+   design question to settle first: an in-memory/per-instance limiter
+   (simplest, but resets on redeploy and does not coordinate across
+   serverless instances) versus an external store (Redis, a Postgres
+   table, or a provider) that actually holds up under Vercel's deployment
+   model. `docs/adr/0015-toilet-reports.md`'s own "Not decided here"
+   territory names this exact gap. `ARCHITECTURE.md` section 21 rules out
+   Redis "for ordinary reads" as a non-goal without evidence — whether a
+   report rate limiter counts as evidence enough is this task's first
+   real decision, not something to default into. Keep the abuse-control
+   surface itself minimal (per-IP or a coarse fingerprint, whichever
+   privacy discipline (`PRODUCT.md` section 14, "no unnecessary personal
+   data") actually allows) rather than reusing `TASK-020`'s already-
+   deferred, not-yet-designed metadata columns without re-examining them.

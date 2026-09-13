@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buildWalkingNavigationUrl } from '@/lib/external-navigation/build-navigation-url';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { confidenceLabel, featureStateLabel } from '@/lib/toilets/detail-copy';
@@ -11,6 +11,7 @@ import {
   openingStatusVariant,
   priceAmountLabel,
 } from '@/lib/toilets/preview-copy';
+import { ReportSheet } from './ReportSheet';
 import styles from './MapShell.module.css';
 
 /** Maps `openingStatusVariant`'s result to the badge colour class (TASK-013). */
@@ -25,9 +26,10 @@ const STATUS_BADGE_CLASS: Record<ReturnType<typeof openingStatusVariant>, string
  * FR-05 lists that the nearby API actually returns today: name, distance +
  * ETA, opening status + price (an amount when TASK-014's charge parser
  * found one), a navigation CTA (TASK-012), accessibility features, the
- * three payment-method facts TASK-014 normalises, and a data-confidence
- * hint. No hours, no report control — see `tasks/011-toilet-detail-sheet.md`
- * for why each is deliberately absent rather than an oversight.
+ * three payment-method facts TASK-014 normalises, a data-confidence hint,
+ * and a report control (TASK-020, `docs/adr/0015-toilet-reports.md`),
+ * position 8, opening `ReportSheet` in place of this sheet. No hours yet —
+ * see `tasks/011-toilet-detail-sheet.md` for why.
  */
 export function ToiletDetailSheet({
   toilet,
@@ -39,10 +41,21 @@ export function ToiletDetailSheet({
   onClose: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
+
+  if (reportOpen) {
+    return (
+      <ReportSheet
+        toiletId={toilet.id}
+        dictionary={dictionary}
+        onClose={() => setReportOpen(false)}
+      />
+    );
+  }
 
   return (
     <div className={styles.scrim}>
@@ -121,6 +134,9 @@ export function ToiletDetailSheet({
         <p className={styles.sheetPrivacyHint}>
           {confidenceLabel(toilet.confidenceLevel, dictionary)}
         </p>
+        <button type="button" className={styles.sheetSecondary} onClick={() => setReportOpen(true)}>
+          {dictionary.reportControlLabel}
+        </button>
       </div>
     </div>
   );

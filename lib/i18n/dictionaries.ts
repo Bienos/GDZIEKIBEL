@@ -131,6 +131,29 @@ export interface Dictionary {
   detailNavigateCta: string;
   detailNavigatePunchline: string;
   /**
+   * The detail sheet's report control (TASK-020, position 8 of `DESIGN.md`
+   * section 9.4), and the sheet it opens: a headline distinct from the
+   * button (the ask/denied screens' own pattern), the seven `BRAND.md`
+   * "Reporting" reasons in their documented order, the optional note
+   * field, submit, and success/failure states. Failure reuses no existing
+   * key: retrying a report is a different action from retrying location or
+   * the map, even where the Polish text happens to coincide.
+   */
+  reportControlLabel: string;
+  reportHeadline: string;
+  reportReasonClosed: string;
+  reportReasonDoesNotExist: string;
+  reportReasonWrongHours: string;
+  reportReasonWrongPrice: string;
+  reportReasonAccessDenied: string;
+  reportReasonWrongAccessibility: string;
+  reportReasonOther: string;
+  reportNoteLabel: string;
+  reportSubmit: string;
+  reportSuccess: string;
+  reportFailure: string;
+  reportRetry: string;
+  /**
    * The no-results overlay (TASK-017, `docs/adr/0012-no-results-diagnosis.md`).
    * One shared headline; the body and action are picked from three states —
    * a filter is active (its action reuses `filtersClear` above, no new key),
@@ -210,6 +233,20 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceLow: 'PEWNOŚĆ DANYCH: NISKA',
     detailNavigateCta: 'PROWADŹ MNIE',
     detailNavigatePunchline: 'ZANIM BĘDZIE ZA PÓŹNO.',
+    reportControlLabel: 'ZGŁOŚ PROBLEM',
+    reportHeadline: 'CO JEST NIE TAK?',
+    reportReasonClosed: 'Jest zamknięty',
+    reportReasonDoesNotExist: 'Nie istnieje',
+    reportReasonWrongHours: 'Godziny są złe',
+    reportReasonWrongPrice: 'Cena jest inna',
+    reportReasonAccessDenied: 'Nie wpuszczają bez zakupu',
+    reportReasonWrongAccessibility: 'Dostępność jest błędna',
+    reportReasonOther: 'Inny problem',
+    reportNoteLabel: 'Szczegóły (opcjonalnie)',
+    reportSubmit: 'WYŚLIJ ZGŁOSZENIE',
+    reportSuccess: 'DZIĘKI. SPRAWDZIMY.',
+    reportFailure: 'Nie udało się wysłać zgłoszenia.',
+    reportRetry: 'SPRÓBUJ PONOWNIE',
     noResultsHeadline: 'NIC BLISKO.',
     noResultsFilteredBody: 'Żaden kibel nie spełnia wybranych filtrów.',
     noResultsRadiusBody: 'W tym promieniu nie mamy nic sensownego.',
@@ -280,6 +317,20 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailConfidenceLow: 'DATA CONFIDENCE: LOW',
     detailNavigateCta: 'TAKE ME THERE',
     detailNavigatePunchline: "BEFORE IT'S TOO LATE.",
+    reportControlLabel: 'REPORT AN ISSUE',
+    reportHeadline: "WHAT'S WRONG?",
+    reportReasonClosed: "It's closed",
+    reportReasonDoesNotExist: "It doesn't exist",
+    reportReasonWrongHours: 'Hours are wrong',
+    reportReasonWrongPrice: 'Price is wrong',
+    reportReasonAccessDenied: "Won't let you in without buying something",
+    reportReasonWrongAccessibility: 'Accessibility info is wrong',
+    reportReasonOther: 'Something else',
+    reportNoteLabel: 'Details (optional)',
+    reportSubmit: 'SEND REPORT',
+    reportSuccess: "THANKS. WE'LL CHECK.",
+    reportFailure: "Couldn't send the report.",
+    reportRetry: 'TRY AGAIN',
     noResultsHeadline: 'NOTHING NEARBY.',
     noResultsFilteredBody: 'No toilet matches your filters.',
     noResultsRadiusBody: 'Nothing decent within this radius yet.',
