@@ -8,6 +8,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Integration test files share one Postgres database, so they run one at a
+    // time: in parallel, one file's cleanup deletes rows another file is still
+    // asserting on. This option only takes effect at the root.
+    fileParallelism: false,
     projects: [
       {
         resolve: {
@@ -31,7 +35,6 @@ export default defineConfig({
           name: 'integration',
           environment: 'node',
           include: ['tests/integration/**/*.test.ts'],
-          // Integration tests talk to a real Postgres/PostGIS database.
           setupFiles: ['tests/integration/setup.ts'],
           hookTimeout: 30_000,
           testTimeout: 30_000,

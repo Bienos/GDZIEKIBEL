@@ -12,8 +12,14 @@ const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
 const CENTRE = { lat: 52.2297, lon: 21.0122 };
 
 describe.skipIf(!hasDatabaseUrl)('toilet schema', () => {
+  // Deletes only what this file created. A TRUNCATE here would remove rows
+  // another test file is still using, since they share one database.
   afterEach(async () => {
-    await getPool().query('TRUNCATE toilet_source_records, toilets, ingestion_runs');
+    await getPool().query(`DELETE FROM toilet_source_records WHERE source_name = 'schema-test'`);
+    await getPool().query(`DELETE FROM toilets WHERE name = ANY($1)`, [
+      ['Test', 'near', 'far', 't', 'renamed'],
+    ]);
+    await getPool().query(`DELETE FROM ingestion_runs WHERE source_name = 'schema-test'`);
   });
 
   afterAll(async () => {
@@ -84,10 +90,13 @@ describe.skipIf(!hasDatabaseUrl)('toilet schema', () => {
     );
 
     const result = await getPool().query<{ name: string; meters: number }>(
+      // Scoped to this test's own rows: the table may hold ingested data, and
+      // asserting on every row in it would make this test depend on that.
       `SELECT name,
               ST_Distance(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS meters
          FROM toilets
         WHERE canonical_status = 'active'
+          AND name = ANY(ARRAY['near', 'far'])
           AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 1000)
         ORDER BY meters`,
       [CENTRE.lon, CENTRE.lat],
@@ -117,7 +126,7 @@ describe.skipIf(!hasDatabaseUrl)('toilet schema', () => {
 
   it('rejects a duplicate source record for the same source and id', async () => {
     const insert = `INSERT INTO toilet_source_records (source_name, source_record_id, normalized_payload)
-                    VALUES ('osm', 'node/1', '{}'::jsonb)`;
+                    VALUES ('schema-test', 'node/1', '{}'::jsonb)`;
     await getPool().query(insert);
 
     await expect(getPool().query(insert)).rejects.toThrow(/duplicate key value/);
@@ -162,14 +171,15 @@ describe.skipIf(!hasDatabaseUrl)('toilet schema', () => {
     );
     await getPool().query(
       `INSERT INTO toilet_source_records (source_name, source_record_id, toilet_id, normalized_payload)
-       VALUES ('osm', 'node/2', $1, '{}'::jsonb)`,
+       VALUES ('schema-test', 'node/2', $1, '{}'::jsonb)`,
       [toilet.rows[0]?.id],
     );
 
     await getPool().query('DELETE FROM toilets WHERE id = $1', [toilet.rows[0]?.id]);
 
     const remaining = await getPool().query<{ toilet_id: string | null }>(
-      `SELECT toilet_id FROM toilet_source_records WHERE source_record_id = 'node/2'`,
+      `SELECT toilet_id FROM toilet_source_records
+        WHERE source_name = 'schema-test' AND source_record_id = 'node/2'`,
     );
     expect(remaining.rowCount).toBe(1);
     expect(remaining.rows[0]?.toilet_id).toBeNull();
@@ -179,7 +189,7 @@ describe.skipIf(!hasDatabaseUrl)('toilet schema', () => {
     await expect(
       getPool().query(
         `INSERT INTO ingestion_runs (source_name, started_at, finished_at)
-         VALUES ('osm', now(), now() - interval '1 minute')`,
+         VALUES ('schema-test', now(), now() - interval '1 minute')`,
       ),
     ).rejects.toThrow(/check constraint/);
   });

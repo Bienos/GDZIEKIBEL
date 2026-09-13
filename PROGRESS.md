@@ -172,6 +172,43 @@ Observed:
 Not created, by design: any row, any adapter, any query module, any report
 table.
 
+### TASK-004 — Ingest first Warsaw toilet dataset (OpenStreetMap)
+
+Code complete on 2026-09-13; **not run against the live source**. Specified in
+`tasks/004-ingest-osm-toilets.md`.
+
+Created: `lib/ingest/osm/` (fetch, validate, normalize), the source-agnostic
+`lib/ingest/upsert.ts`, and the command `pnpm ingest:osm`. The Warsaw
+administrative boundary is resolved at run time by tags and printed; the command
+aborts rather than guess when the answer is not a single admin_level 6 relation.
+OSM account fields are stripped before a response is saved or stored. The whole
+upsert is one transaction.
+
+Observed on 2026-09-13, replaying `tests/fixtures/osm/elements.json` against a
+freshly migrated database:
+
+| Run | Fetched | Created | Unchanged | Rejected |
+| --- | --- | --- | --- | --- |
+| first | 4 | 4 | 0 | 2 |
+| second | 4 | 0 | 4 | 2 |
+
+The two rejections are the fixture's deliberate bad cases: an element with no
+position and one outside the coarse Warsaw box. Both were reported by key and
+reason, never by dumping the element.
+
+The stored rows show the unknown rule holding: a node carrying only
+`amenity=toilets` reads back with access, price, wheelchair and changing table
+all `unknown`, while a node with `access=customers` reads `customers_only` and
+`wheelchair=no`. Absence and negation stayed distinct through the whole
+pipeline.
+
+**Still to do before TASK-004 can be called complete:** one live run from the
+GdzieKibel cloud environment, recording the boundary relation it resolved and
+its counts. This session's egress denies `overpass-api.de`.
+
+Not created, by design: any deduplication, opening-hours parsing, confidence
+scoring, scheduled workflow, query module or UI.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -207,11 +244,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 59 tests in 7 files                            |
+| `pnpm test:unit`          | pass, 73 tests in 8 files                            |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 12 tests in 2 files                            |
+| `pnpm test:integration`   | pass, 19 tests in 3 files                            |
 | `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project       |
 
 Also observed:
@@ -288,11 +325,17 @@ Not verifiable in this environment, and therefore not claimed:
 
 ## Next approved task
 
-`TASK-004 — Ingest first Warsaw toilet dataset` per `PLAN.md`. Not yet
-specified; a `tasks/004-*.md` file must be written first. Its inputs are
-`docs/contracts/osm-toilets-source.md`, ADR 0003 sections 2 to 4, and the Zod
-schema in `lib/toilets/normalized-source-record.ts`. It needs network access to
-Overpass, which the GdzieKibel cloud environment provides and this session does
-not.
+One live ingestion run, from a session in the GdzieKibel cloud environment:
 
-TASK-002 remains open only for the observation gaps in its table above.
+```
+git pull && pnpm install --frozen-lockfile
+pnpm db:migrate
+pnpm ingest:osm
+```
+
+Record the boundary relation it resolves and its counts here. That closes
+TASK-004 and, with the same run, most of the TASK-002 observation gaps.
+
+Then `TASK-005 — Render Warsaw map shell` per `PLAN.md`, which needs a
+`tasks/005-*.md` file and a decision on the map tile provider, still open in
+`ARCHITECTURE.md` section 23.

@@ -31,3 +31,6 @@ blob-report/
 
 # one-off research probe output (raw source responses, never committed)
 .research-output/
+
+# ingestion raw responses (never committed)
+.ingest-output/

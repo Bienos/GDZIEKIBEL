@@ -35,7 +35,9 @@ lib/
   toilets/types.ts    enumerated values of the toilet model, mirroring the SQL types
   toilets/normalized-source-record.ts
                       Zod schema an ingestion adapter must emit (contract section 6)
-  geo/warsaw.ts       coarse Warsaw bounding box; the boundary check is TASK-004's
+  geo/warsaw.ts       coarse Warsaw bounding box, a first filter only
+  ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
+  ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -44,10 +46,12 @@ db/
     *_toilet-schema.sql    toilets, toilet_source_records, ingestion_runs, enums
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
+  ingest/osm.ts       the ingestion command (pnpm ingest:osm)
   research/           one-off source probes; not application code, not in CI
 tests/
   unit/               no external services
   integration/        real Postgres/PostGIS; skips when DATABASE_URL is unset
+  fixtures/osm/       synthetic elements for the ingestion tests, not real data
 e2e/
   home.spec.ts        Playwright smoke test
 ```
@@ -94,6 +98,7 @@ Ownership:
 
 ## Not yet created
 
-No map, geolocation, ingestion, nearby query, ranking, reporting, analytics
-or error-tracking code exists. The toilet schema exists but holds no rows.
-Those areas are owned by later tasks.
+No map, geolocation, nearby query, ranking, deduplication, opening-hours
+parsing, confidence scoring, reporting, analytics or error-tracking code
+exists. Ingestion exists but has never run against the live source. Those
+areas are owned by later tasks.
