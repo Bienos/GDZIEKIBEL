@@ -22,7 +22,8 @@
     "db:migrate": "node-pg-migrate -m db/migrations --envPath .env.local up",
     "db:migrate:down": "node-pg-migrate -m db/migrations --envPath .env.local down",
     "db:migrate:create": "node-pg-migrate -m db/migrations -j sql create",
-    "db:check": "tsx scripts/db/check-postgis.ts"
+    "db:check": "tsx scripts/db/check-postgis.ts",
+    "research:probe": "tsx scripts/research/probe-sources.ts"
   },
   "dependencies": {
     "next": "16.3.5",

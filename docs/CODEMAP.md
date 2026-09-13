@@ -36,6 +36,7 @@ db/
   migrations/         timestamped SQL migrations run by node-pg-migrate
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
+  research/           one-off source probes; not application code, not in CI
 tests/
   unit/               no external services
   integration/        real Postgres/PostGIS; skips when DATABASE_URL is unset

@@ -97,7 +97,14 @@ project will consume.
 - observed counts and coverage comparison;
 - the field-level source decision;
 - the source contract and the ADR;
-- throwaway probe scripts, if they are needed to read a source.
+- probe scripts needed to read a source.
+
+A probe already exists at `scripts/research/probe-sources.ts` (`pnpm
+research:probe`). It queries the candidate catalogue and Overpass endpoints,
+saves every raw response under a gitignored directory, and writes an
+observations report in which anything unobserved stays UNVERIFIED. Its parsers
+are covered by `tests/unit/research-parse.test.ts`. Its network path has never
+succeeded, because the environment it was written in denies those hosts.
 
 ## Out of scope
 

@@ -49,6 +49,15 @@ The research states in its own limitations section that the Warsaw open-data
 toilet dataset endpoint, schema and licence were not verified against the live
 service. That verification is the remaining work and has not been done.
 
+A probe that performs the observable part of it exists at
+`scripts/research/probe-sources.ts`, run with `pnpm research:probe`. Observed on
+2026-09-13: every request it makes is refused from this environment with HTTP
+403 at the egress proxy, and the script reports that as a blocker and exits
+non-zero rather than producing a result. Its success path has therefore never
+run. Its parsers are covered by nine unit tests against recorded response
+shapes, which assert that a missing licence reads as null and that a malformed
+payload yields nothing.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -61,7 +70,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 14 tests in 2 files                            |
+| `pnpm test:unit`          | pass, 23 tests in 3 files                            |
 | `pnpm build`              | pass, `/` and `/_not-found` prerendered as static     |
 | `pnpm db:migrate`         | pass, baseline applied to an empty database          |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |

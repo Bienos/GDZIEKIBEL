@@ -28,3 +28,6 @@ blob-report/
 *.log
 .vercel
 *.tsbuildinfo
+
+# one-off research probe output (raw source responses, never committed)
+.research-output/
