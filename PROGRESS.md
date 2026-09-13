@@ -409,6 +409,59 @@ dot, and now the toilet markers have never been observed rendering for
 real. Closing this needs a session with a working
 `NEXT_PUBLIC_MAPTILER_KEY` and egress to `api.maptiler.com`.
 
+### TASK-009 — Recommendation ranking
+
+Complete on 2026-09-13. Specified in `tasks/009-recommendation-ranking.md`;
+decision recorded in `docs/adr/0007-recommendation-ranking-formula.md`.
+
+Created: `lib/toilets/rank-nearby.ts`, a pure function reordering nearby
+results by `distanceMeters + ACCESS_CONFIDENCE_PENALTY_METERS[accessType]`,
+ascending, ties broken on real distance. `app/api/toilets/nearby/route.ts`
+applies it to `findNearbyToilets`'s rows before mapping them to the response
+shape; `db/queries/nearby.ts` itself is unchanged and still returns plain
+distance order, exactly as its own docstring and tests already said ranking
+would be layered on top of, not inside it.
+
+**Which of `PRODUCT.md` section 11's six criteria this actually acts on.**
+Only two are real, differentiating signals in the data as it exists today:
+distance, and `access_type` (public-access confidence). The other four are
+named explicitly, in both the task file and the ADR, as currently inert
+rather than silently dropped: "known closed" is already fully excluded
+upstream by `canonical_status = 'active'`; `confidence_level` defaults to
+`'low'` and nothing sets it to anything else yet (`TASK-019`); no `filters`
+field exists in the request (`TASK-016`); no price-preference input exists
+anywhere. Ranking on a constant or a nonexistent field would have been dead
+code pretending to do something.
+
+**Verified against real infrastructure, not just unit mocks.** Beyond 9 new
+unit tests (including a literal regression test for section 11's own
+example — a farther `public_unconditional` toilet outranking a closer
+`unknown`-access one — and a test that the penalty table names every
+`AccessType` member, typed so a missed one is a compile error, not a silent
+default), this session had a working local PostgreSQL/PostGIS and used it:
+two real rows were inserted (`ranktest-closer-uncertain` at 300 m with
+`access_type = 'unknown'`, `ranktest-farther-confident` at 401 m with
+`access_type = 'public_unconditional'`), a real production build was run
+with `pnpm start`, and a `curl` request to the real running
+`POST /api/toilets/nearby` endpoint returned `ranktest-farther-confident`
+before `ranktest-closer-uncertain` — the exact reordering the formula
+predicts, observed end to end through the real route, the real ranking
+function, and a real database, not asserted only against a mock. Both
+fixture rows were deleted afterward and the deletion was independently
+confirmed by a follow-up `SELECT count(*)`.
+
+Verified: lint, format, typecheck, 123 unit tests (9 new), 25 integration
+tests (unchanged — this task added no query or schema changes), the
+production build, a live curl verification against a real database as
+described above, and the existing 7 Playwright tests (unchanged; no
+user-visible interaction changed, only response order, which the E2E suite
+does not assert on).
+
+Not created, by design: any change to `db/queries/nearby.ts`'s SQL, a
+`filters` field, a real `confidence_level` computation, an exposed score in
+the API response, or a "recommended" marker visual variant — nothing
+downstream of the API yet reads or displays the new order.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -444,7 +497,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 114 tests in 17 files                          |
+| `pnpm test:unit`          | pass, 123 tests in 18 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
@@ -541,8 +594,7 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-009 — Recommendation ranking` per `PLAN.md`, which needs a
-   `tasks/009-*.md` file. `PRODUCT.md` section 11 gives the ranking order
-   (closed/uncertain vs usable, distance, confidence, access confidence,
-   filters, price) and requires the score formula documented in code and
-   tests, not an opaque number.
+2. `TASK-010 — Nearest toilet preview` per `PLAN.md`: a bottom preview
+   showing the top-ranked toilet from the now-ordered nearby results
+   (`TASK-009`), its distance, approximate ETA, status and price. Needs a
+   `tasks/010-*.md` file.

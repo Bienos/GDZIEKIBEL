@@ -28,8 +28,8 @@ app/
     page.tsx          top bar (wordmark, language switch) + the map shell
     page.module.css   styles for the top bar and page layout
   api/toilets/nearby/route.ts
-                      POST only; bounded nearby active toilets, distance
-                      order, no filters/ranking yet (TASK-007)
+                      POST only; bounded nearby active toilets, reordered by
+                      rankNearbyToilets (TASK-009); no filters yet
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -73,6 +73,10 @@ lib/
                       selected-state toggle
   toilets/marker-label.ts
                       accessible name for a marker: name + rounded distance
+  toilets/rank-nearby.ts
+                      reorders nearby results by distance + access-type
+                      confidence, a named metre-penalty table (TASK-009,
+                      ADR 0007); pure, no database
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -132,6 +136,10 @@ Ownership:
 - `docs/adr/0006-nearby-api-contract.md` — feature fields as enum strings not
   booleans, `openingStatus` always `UNKNOWN` until TASK-013, no `filters`
   field until TASK-016, the walking-time constant.
+- `docs/adr/0007-recommendation-ranking-formula.md` — the nearby API's result
+  order is distance plus a named per-`access_type` metre penalty; the other
+  four PRODUCT.md section 11 ranking criteria are named as currently inert,
+  not silently dropped.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -145,11 +153,14 @@ Ownership:
 
 A Warsaw map shell renders, the location permission ask/grant/deny flow
 works, and nearby toilets fetch and render as clickable, selectable markers
-(one visual state only; see ADR 0006 and TASK-008's own notes on why). No
-ranking beyond plain distance order, filters, bottom sheet, detail view, or
+(one visual state only; see ADR 0006 and TASK-008's own notes on why). The
+nearby API now orders results by distance plus access-type confidence
+(TASK-009, ADR 0007), verified against a real PostGIS database and a real
+running production build (see PROGRESS.md); the map shell does not yet read
+or display that order — no bottom preview, filters, detail view, or
 accessible list view exists yet. No deduplication, opening-hours parsing,
-confidence scoring, reporting, analytics or error-tracking code exists.
-Ingestion exists but has never run against the live source, and the map —
-tiles, the location dot, and now the toilet markers — has never been
+real confidence scoring, reporting, analytics or error-tracking code
+exists. Ingestion exists but has never run against the live source, and the
+map — tiles, the location dot, and the toilet markers — has never been
 visually observed rendering for real from this session. Those areas are
 owned by later tasks.
