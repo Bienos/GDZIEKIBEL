@@ -54,9 +54,25 @@ A probe that performs the observable part of it exists at
 2026-09-13: every request it makes is refused from this environment with HTTP
 403 at the egress proxy, and the script reports that as a blocker and exits
 non-zero rather than producing a result. Its success path has therefore never
-run. Its parsers are covered by nine unit tests against recorded response
-shapes, which assert that a missing licence reads as null and that a malformed
-payload yields nothing.
+run.
+
+Reviewed and extended later the same day. The probe originally read only the
+dataset catalogue, which cannot reveal a field list, a record count or an
+example record, all three of which the task requires as observed values. It now
+samples each catalogue resource that carries a datastore id with one
+`datastore_search` call at `limit=1`, capped at ten per run, and writes the
+observed fields, total and first record into the report. Catalogue and datastore
+calls time out after 30 seconds instead of three minutes; Overpass keeps three
+minutes to match its own query timeout. The User-Agent now carries the
+repository URL as the contact point Overpass policy expects. Its parsers are
+covered by fourteen unit tests against recorded response shapes, which assert
+that a missing licence reads as null, that a missing total reads as null rather
+than zero, and that a malformed payload yields nothing.
+
+Dry run observed on 2026-09-13 with `RESEARCH_OUTPUT_DIR` pointed outside the
+repository: 18 requests, every one answered HTTP 403 by the egress proxy, raw
+bodies saved, report written with the schema section marked UNVERIFIED, exit
+code 1. That is the failure path behaving as designed, not a result.
 
 ## Verification at current baseline
 
@@ -70,7 +86,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 23 tests in 3 files                            |
+| `pnpm test:unit`          | pass, 28 tests in 3 files                            |
 | `pnpm build`              | pass, `/` and `/_not-found` prerendered as static     |
 | `pnpm db:migrate`         | pass, baseline applied to an empty database          |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
@@ -129,6 +145,11 @@ Not verifiable in this environment, and therefore not claimed:
   deployment could not be created or inspected from here. Direct network access
   to Vercel hosts is also blocked by the environment's egress policy.
 - CI has not been observed running on GitHub; the workflow is untested there.
+- A separate cloud environment with an allowlist for the Warsaw and
+  OpenStreetMap hosts was created on 2026-09-13. No session has yet reported a
+  successful probe run from it; the one session that ran after its creation
+  recorded the same HTTP 403 denials. Whether that session used the new
+  environment is not recorded.
 - The TASK-002 source verification could not be started from this environment.
   On 2026-09-13 the egress proxy answered HTTP 403 to CONNECT for
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,

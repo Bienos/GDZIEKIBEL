@@ -9,9 +9,10 @@ observation rather than recall.
 
 ## probe-sources.ts
 
-Supports TASK-002. Queries the Warsaw dataset catalogue and OpenStreetMap via
-Overpass, saves every raw response, and writes `OBSERVATIONS.md` summarising
-what was seen.
+Supports TASK-002. Queries the Warsaw dataset catalogue, samples each
+datastore resource it finds for its field list, record count and one example
+record, counts Warsaw toilets in OpenStreetMap via Overpass, saves every raw
+response, and writes `OBSERVATIONS.md` summarising what was seen.
 
 ```bash
 pnpm research:probe            # catalogue metadata and counts
@@ -26,8 +27,11 @@ Notes:
 - The script asserts nothing. Anything it did not observe is written as
   UNVERIFIED, including every licence question, which needs a person to read
   the published terms.
-- It needs outbound access to `warszawa.pl` and `overpass-api.de`. Sandboxed
-  agent environments commonly deny both, and the report then records the denial.
+- It needs outbound access to `api.um.warszawa.pl`, `dane.um.warszawa.pl` and
+  `overpass-api.de`. Sandboxed agent environments commonly deny all three, and
+  the report then records the denial.
+- Datastore sampling is capped at ten resources per run and uses `limit=1`, so
+  a run makes a few dozen small requests at most.
 - The bounding box in the script is a probe convenience. The project's real area
   definition is for TASK-002 to decide and record.
 - Overpass is queried a small number of times per run, in line with its usage

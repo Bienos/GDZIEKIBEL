@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { readCatalogue, readOverpassCount, readTagCoverage } from '@/scripts/research/parse';
+import {
+  readCatalogue,
+  readDatastore,
+  readOverpassCount,
+  readTagCoverage,
+} from '@/scripts/research/parse';
 
 /**
  * The TASK-002 probe cannot reach its sources from every environment, so the
@@ -21,7 +26,7 @@ describe('readCatalogue', () => {
           license_title: 'Creative Commons Attribution',
           metadata_modified: '2026-08-01T10:00:00.000000',
           resources: [
-            { format: 'JSON', url: 'https://example.invalid/toilets.json' },
+            { id: 'res-json', format: 'JSON', url: 'https://example.invalid/toilets.json' },
             { format: 'CSV' },
           ],
         },
@@ -38,11 +43,17 @@ describe('readCatalogue', () => {
     expect(dataset?.metadataModified).toBe('2026-08-01T10:00:00.000000');
   });
 
-  it('keeps a resource whose url is absent rather than dropping the row', () => {
+  it('keeps the resource id so the datastore can be queried for schema', () => {
+    const [dataset] = readCatalogue('toalety', 'https://example.invalid', response);
+
+    expect(dataset?.resources[0]?.id).toBe('res-json');
+  });
+
+  it('keeps a resource whose id and url are absent rather than dropping the row', () => {
     const [dataset] = readCatalogue('toalety', 'https://example.invalid', response);
 
     expect(dataset?.resources).toHaveLength(2);
-    expect(dataset?.resources[1]).toEqual({ format: 'CSV', url: null });
+    expect(dataset?.resources[1]).toEqual({ id: null, format: 'CSV', url: null });
   });
 
   it('reports a missing licence as null instead of guessing one', () => {
@@ -58,6 +69,58 @@ describe('readCatalogue', () => {
     expect(readCatalogue('t', 'h', 'not json')).toEqual([]);
     expect(readCatalogue('t', 'h', '{"result":{}}')).toEqual([]);
     expect(readCatalogue('t', 'h', '{"error":"denied"}')).toEqual([]);
+  });
+});
+
+describe('readDatastore', () => {
+  const response = JSON.stringify({
+    success: true,
+    result: {
+      resource_id: 'res-json',
+      fields: [
+        { id: '_id', type: 'int' },
+        { id: 'nazwa', type: 'text' },
+        { id: 'czynne_od' },
+        { type: 'text' },
+      ],
+      records: [{ _id: 1, nazwa: 'Toaleta Metro Centrum', czynne_od: '06:00' }],
+      total: 312,
+    },
+  });
+
+  it('reads the field list, the total and the first record', () => {
+    const sample = readDatastore(response);
+
+    expect(sample?.total).toBe(312);
+    expect(sample?.fields).toEqual([
+      { id: '_id', type: 'int' },
+      { id: 'nazwa', type: 'text' },
+      { id: 'czynne_od', type: null },
+    ]);
+    expect(sample?.example).toEqual({ _id: 1, nazwa: 'Toaleta Metro Centrum', czynne_od: '06:00' });
+  });
+
+  it('accepts a total given as a digit string but nothing else', () => {
+    const asString = JSON.stringify({ result: { fields: [{ id: 'x' }], total: '42' } });
+    const asWords = JSON.stringify({ result: { fields: [{ id: 'x' }], total: 'many' } });
+
+    expect(readDatastore(asString)?.total).toBe(42);
+    expect(readDatastore(asWords)?.total).toBeNull();
+  });
+
+  it('reports a missing total or record as null rather than zero or empty', () => {
+    const raw = JSON.stringify({ result: { fields: [{ id: 'x' }], records: [] } });
+
+    const sample = readDatastore(raw);
+
+    expect(sample?.total).toBeNull();
+    expect(sample?.example).toBeNull();
+  });
+
+  it('returns null when the payload carries no field list', () => {
+    expect(readDatastore('not json')).toBeNull();
+    expect(readDatastore('{"result":{"records":[]}}')).toBeNull();
+    expect(readDatastore('{"success":false,"error":{"message":"Not found"}}')).toBeNull();
   });
 });
 

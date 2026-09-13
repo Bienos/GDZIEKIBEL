@@ -11,14 +11,14 @@
  *   pnpm research:probe -- --full  also downloads Warsaw toilet elements and
  *                                  computes tag coverage
  *
- * Requires outbound access to warszawa.pl and overpass-api.de. Sandboxed agent
- * environments commonly deny both; the report then records the denial, which is
- * a blocker, not a result.
+ * Requires outbound access to api.um.warszawa.pl, dane.um.warszawa.pl and
+ * overpass-api.de. Sandboxed agent environments commonly deny all three; the
+ * report then records the denial, which is a blocker, not a result.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CatalogueDataset, TagCoverage } from './parse';
-import { readCatalogue, readOverpassCount, readTagCoverage } from './parse';
+import type { CatalogueDataset, DatastoreSample, TagCoverage } from './parse';
+import { readCatalogue, readDatastore, readOverpassCount, readTagCoverage } from './parse';
 
 const OUTPUT_DIR = process.env.RESEARCH_OUTPUT_DIR ?? '.research-output';
 const FULL = process.argv.includes('--full');
@@ -27,7 +27,8 @@ const FULL = process.argv.includes('--full');
  * Identifies the client to the operators whose services this queries, as their
  * usage policies expect.
  */
-const USER_AGENT = 'GdzieKibel.pl TASK-002 source probe (one-off research; contact via repository)';
+const USER_AGENT =
+  'GdzieKibel.pl TASK-002 source probe (one-off research; https://github.com/Bienos/GDZIEKIBEL)';
 
 /**
  * Approximate bounding box around the Warsaw administrative area.
@@ -50,6 +51,19 @@ const CKAN_PATHS = ['/api/3/action/package_search', '/api/action/package_search'
 
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
 
+/** CKAN datastore_search paths, tried in order for each resource id. */
+const DATASTORE_PATHS = ['/api/3/action/datastore_search', '/api/action/datastore_search'];
+
+/** Upper bound on datastore_search calls per run, to stay polite to the catalogue. */
+const MAX_DATASTORE_SAMPLES = 10;
+
+/**
+ * Catalogue and datastore calls should answer in seconds. Overpass may
+ * legitimately take minutes, and its own query timeout is set to match.
+ */
+const CATALOGUE_TIMEOUT_MS = 30_000;
+const OVERPASS_TIMEOUT_MS = 180_000;
+
 interface Probe {
   label: string;
   url: string;
@@ -62,6 +76,12 @@ interface Probe {
   error: string | null;
 }
 
+interface SchemaSample {
+  dataset: CatalogueDataset;
+  resourceId: string;
+  sample: DatastoreSample | null;
+}
+
 const probes: Probe[] = [];
 
 function slug(label: string): string {
@@ -72,7 +92,12 @@ function slug(label: string): string {
 }
 
 /** Fetches a URL, saves the raw body, and records the outcome either way. */
-async function probe(label: string, url: string, body?: string): Promise<string | null> {
+async function probe(
+  label: string,
+  url: string,
+  body?: string,
+  timeoutMs: number = CATALOGUE_TIMEOUT_MS,
+): Promise<string | null> {
   const observedAt = new Date().toISOString();
   const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
   if (body !== undefined) headers['Content-Type'] = 'application/x-www-form-urlencoded';
@@ -82,7 +107,7 @@ async function probe(label: string, url: string, body?: string): Promise<string 
       method: body === undefined ? 'GET' : 'POST',
       headers,
       body,
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const text = await response.text();
     const savedAs = `${slug(label)}.txt`;
@@ -158,16 +183,49 @@ async function main(): Promise<void> {
     }
   }
 
+  const unique = new Map<string, CatalogueDataset>();
+  for (const dataset of datasets) {
+    const key = `${dataset.host}:${dataset.id ?? dataset.name ?? dataset.title ?? ''}`;
+    if (!unique.has(key)) unique.set(key, dataset);
+  }
+
+  // One datastore_search per resource, limit=1, is what reveals the field list,
+  // the record count and a real example record. The catalogue alone shows none
+  // of those, and TASK-002 requires all three to be observed, not recalled.
+  process.stdout.write('\nWarsaw dataset schema (datastore_search, limit=1)\n');
+  const samples: SchemaSample[] = [];
+  for (const dataset of unique.values()) {
+    for (const resource of dataset.resources) {
+      if (!resource.id || samples.length >= MAX_DATASTORE_SAMPLES) continue;
+      let sample: DatastoreSample | null = null;
+      for (const path of DATASTORE_PATHS) {
+        const query = `resource_id=${encodeURIComponent(resource.id)}&limit=1`;
+        const raw = await probe(
+          `datastore ${dataset.host} ${path} ${resource.id}`,
+          `${dataset.host}${path}?${query}`,
+        );
+        sample = raw ? readDatastore(raw) : null;
+        if (sample) break;
+      }
+      samples.push({ dataset, resourceId: resource.id, sample });
+    }
+  }
+  if (samples.length === 0) {
+    process.stdout.write('  (no catalogue resource carried a datastore id)\n');
+  }
+
   process.stdout.write('\nOpenStreetMap via Overpass\n');
   const toiletsRaw = await probe(
     'overpass amenity toilets count',
     OVERPASS_ENDPOINT,
     `data=${encodeURIComponent(OVERPASS_TOILETS_COUNT)}`,
+    OVERPASS_TIMEOUT_MS,
   );
   const venueRaw = await probe(
     'overpass venue toilets count',
     OVERPASS_ENDPOINT,
     `data=${encodeURIComponent(OVERPASS_VENUE_TOILETS_COUNT)}`,
+    OVERPASS_TIMEOUT_MS,
   );
 
   let coverage: TagCoverage | null = null;
@@ -176,18 +234,13 @@ async function main(): Promise<void> {
       'overpass amenity toilets tags',
       OVERPASS_ENDPOINT,
       `data=${encodeURIComponent(OVERPASS_TOILETS_FULL)}`,
+      OVERPASS_TIMEOUT_MS,
     );
     if (fullRaw) coverage = readTagCoverage(fullRaw);
   }
 
   const toiletsCount = toiletsRaw ? readOverpassCount(toiletsRaw) : null;
   const venueCount = venueRaw ? readOverpassCount(venueRaw) : null;
-
-  const unique = new Map<string, CatalogueDataset>();
-  for (const dataset of datasets) {
-    const key = `${dataset.host}:${dataset.id ?? dataset.name ?? dataset.title ?? ''}`;
-    if (!unique.has(key)) unique.set(key, dataset);
-  }
 
   const lines: string[] = [
     '# TASK-002 source probe — raw observations',
@@ -243,6 +296,38 @@ async function main(): Promise<void> {
       }
     }
     lines.push('');
+  }
+
+  lines.push('### Schema samples (datastore_search, limit=1)', '');
+  if (samples.length === 0) {
+    lines.push(
+      'UNVERIFIED. No catalogue resource carried a datastore id, so no field list,',
+      'record count or example record has been observed.',
+      '',
+    );
+  }
+  for (const { dataset, resourceId, sample } of samples) {
+    const name = dataset.title ?? dataset.name ?? dataset.id ?? 'unnamed';
+    lines.push(`#### ${name} — resource ${resourceId}`, '');
+    if (!sample) {
+      lines.push('UNVERIFIED. datastore_search returned nothing parseable for this resource.', '');
+      continue;
+    }
+    lines.push(
+      `- total records: ${sample.total ?? 'UNVERIFIED'}`,
+      `- fields observed: ${sample.fields.length}`,
+      '',
+      '| Field | Type |',
+      '| --- | --- |',
+    );
+    for (const field of sample.fields) lines.push(`| ${field.id} | ${field.type ?? '-'} |`);
+    lines.push('');
+    if (sample.example) {
+      lines.push('Example record, first row returned:', '', '```json');
+      lines.push(JSON.stringify(sample.example, null, 2), '```', '');
+    } else {
+      lines.push('Example record: UNVERIFIED. The response carried no records.', '');
+    }
   }
 
   lines.push(

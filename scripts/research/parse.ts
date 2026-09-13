@@ -9,6 +9,13 @@
  * than a probe that reports nothing.
  */
 
+export interface CatalogueResource {
+  /** CKAN resource id, needed to query the datastore for schema and records. */
+  id: string | null;
+  format: string | null;
+  url: string | null;
+}
+
 export interface CatalogueDataset {
   term: string;
   host: string;
@@ -18,7 +25,21 @@ export interface CatalogueDataset {
   licenseId: string | null;
   licenseTitle: string | null;
   metadataModified: string | null;
-  resources: { format: string | null; url: string | null }[];
+  resources: CatalogueResource[];
+}
+
+export interface DatastoreField {
+  id: string;
+  type: string | null;
+}
+
+/** What one `datastore_search` call with `limit=1` reveals about a resource. */
+export interface DatastoreSample {
+  fields: DatastoreField[];
+  /** Total record count as reported by the datastore, or null when absent. */
+  total: number | null;
+  /** The first record returned, or null when the response carried none. */
+  example: Record<string, unknown> | null;
 }
 
 export interface TagCoverage {
@@ -48,6 +69,13 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+/** Accepts a number, or a string that is only digits. Anything else is null. */
+function asCount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return null;
 }
 
 function parseJson(raw: string): unknown {
@@ -82,11 +110,42 @@ export function readCatalogue(term: string, host: string, raw: string): Catalogu
         resources: resourceList.flatMap((item) => {
           const resource = asRecord(item);
           if (!resource) return [];
-          return [{ format: asString(resource.format), url: asString(resource.url) }];
+          return [
+            {
+              id: asString(resource.id),
+              format: asString(resource.format),
+              url: asString(resource.url),
+            },
+          ];
         }),
       },
     ];
   });
+}
+
+/**
+ * Reads the field list, total and first record out of a CKAN datastore_search
+ * response. Returns null when there is no field list, because without one the
+ * response is not a datastore result at all, whatever else it contains.
+ */
+export function readDatastore(raw: string): DatastoreSample | null {
+  const result = asRecord(asRecord(parseJson(raw))?.result);
+  if (!result || !Array.isArray(result.fields)) return null;
+
+  const fields = result.fields.flatMap((item) => {
+    const field = asRecord(item);
+    const id = asString(field?.id);
+    if (!id) return [];
+    return [{ id, type: asString(field?.type) }];
+  });
+
+  const records = Array.isArray(result.records) ? result.records : [];
+
+  return {
+    fields,
+    total: asCount(result.total),
+    example: asRecord(records[0]),
+  };
 }
 
 /** Reads the element total out of an Overpass `out count` response. */
