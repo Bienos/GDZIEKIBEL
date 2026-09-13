@@ -98,6 +98,19 @@ because a single request succeeded, although the catalogue question it exists to
 answer was untouched. It now exits 2 in that case, and 1 only when everything
 fails.
 
+**Decision, project owner, 2026-09-13: the city dataset is deferred.** Rather
+than block the roadmap on a service returning 503 to every request,
+OpenStreetMap becomes the first ingestion source and the city dataset is
+revisited in a later task. `tasks/002-data-source-research.md` was rewritten
+around that decision. The deferral is recorded as a deferral, not as an
+evaluation: nothing about the city dataset has been observed, and its
+identifier, schema, cadence and licence all remain unverified.
+
+What this costs, from the research: the city's private-venue agreements,
+official opening hours for municipal toilets, and the metro rule as an official
+record. The schema in TASK-003 keeps source records separate from the canonical
+toilet, so adding the city later is additive rather than a rebuild.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -183,5 +196,7 @@ Not verifiable in this environment, and therefore not claimed:
 ## Next approved task
 
 `TASK-002 — Data-source research and source decision`. Specified in
-`tasks/002-data-source-research.md`. Blocked on network access to the Warsaw and
-OpenStreetMap services, which this environment denies.
+`tasks/002-data-source-research.md`, rewritten around OpenStreetMap as the first
+source. No longer blocked: the network is available from the GdzieKibel cloud
+environment and Overpass has answered. Remaining work is the licence reading,
+the coverage counts and the source decision.
