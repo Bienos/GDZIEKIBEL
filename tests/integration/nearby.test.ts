@@ -107,4 +107,35 @@ describe.skipIf(!hasDatabaseUrl)('findNearbyToilets', () => {
 
     expect(rows).toEqual([]);
   });
+
+  it('reports open_24h and opening_hours_normalized (TASK-013), round-tripped through jsonb', async () => {
+    await getPool().query(
+      `INSERT INTO toilets (name, geom, open_24h, opening_hours_normalized)
+       VALUES ($3, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, true, NULL)`,
+      [CENTRE.lng, CENTRE.lat + 0.001, `${PREFIX}always-open`],
+    );
+    await getPool().query(
+      `INSERT INTO toilets (name, geom, open_24h, opening_hours_normalized)
+       VALUES ($3, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, NULL, $4::jsonb)`,
+      [
+        CENTRE.lng,
+        CENTRE.lat + 0.0012,
+        `${PREFIX}scheduled`,
+        JSON.stringify({
+          rules: [{ days: [0, 1, 2, 3, 4], closed: false, ranges: [{ start: 480, end: 960 }] }],
+        }),
+      ],
+    );
+
+    const rows = ownRows(await findNearbyToilets(getPool(), { ...CENTRE, radiusMeters: 1000 }));
+    const alwaysOpen = rows.find((item) => item.name === `${PREFIX}always-open`);
+    const scheduled = rows.find((item) => item.name === `${PREFIX}scheduled`);
+
+    expect(alwaysOpen?.open24h).toBe(true);
+    expect(alwaysOpen?.openingHoursNormalized).toBeNull();
+    expect(scheduled?.open24h).toBeNull();
+    expect(scheduled?.openingHoursNormalized).toEqual({
+      rules: [{ days: [0, 1, 2, 3, 4], closed: false, ranges: [{ start: 480, end: 960 }] }],
+    });
+  });
 });

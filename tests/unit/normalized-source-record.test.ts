@@ -20,6 +20,8 @@ const bare: NormalizedSourceRecord = {
   name: null,
   operatorName: null,
   openingHoursRaw: null,
+  open24h: null,
+  openingHoursNormalized: null,
   priceState: 'unknown',
   chargeRaw: null,
   paymentMethodsRaw: null,
@@ -47,6 +49,11 @@ describe('normalizedSourceRecordSchema', () => {
       name: 'Toaleta miejska',
       operatorName: 'ZOM',
       openingHoursRaw: 'Mo-Su 06:00-22:00',
+      openingHoursNormalized: {
+        rules: [
+          { days: [0, 1, 2, 3, 4, 5, 6], closed: false, ranges: [{ start: 360, end: 1320 }] },
+        ],
+      },
       priceState: 'free',
       accessType: 'public_unconditional',
       accessRaw: 'yes',

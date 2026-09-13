@@ -9,18 +9,46 @@ import type { PriceState } from './types';
  */
 
 /**
- * `openingStatus` is currently the literal type `'UNKNOWN'`
- * (`lib/toilets/nearby-response.ts`, ADR 0006): nothing computes a real
- * value until TASK-013. A `switch` here, rather than a single hard-coded
- * string, is the structure TASK-013 extends when it adds real states.
+ * `openingStatus` is computed by `computeOpeningStatus` (TASK-013,
+ * `docs/adr/0009-opening-hours-status.md`). `BRAND.md`'s "Open / closed /
+ * uncertain" copy library, one literal variant per state.
  */
 export function openingStatusLabel(
   openingStatus: NearbyToiletResult['openingStatus'],
   dictionary: Dictionary,
 ): string {
   switch (openingStatus) {
+    case 'OPEN':
+      return dictionary.previewStatusOpen;
+    case 'CLOSED':
+      return dictionary.previewStatusClosed;
+    case 'LIKELY_OPEN':
+      return dictionary.previewStatusLikelyOpen;
+    case 'LIKELY_CLOSED':
+      return dictionary.previewStatusLikelyClosed;
     case 'UNKNOWN':
       return dictionary.previewStatusUnknown;
+  }
+}
+
+/**
+ * Which status-colour token (`DESIGN.md` section 8: green/red/orange, never
+ * colour alone) a status badge should use. `LIKELY_*` and `UNKNOWN` share
+ * the uncertain colour: both mean "not confidently one or the other,"
+ * which is exactly what that colour already signals for markers.
+ */
+export function openingStatusVariant(
+  openingStatus: NearbyToiletResult['openingStatus'],
+): 'open' | 'closed' | 'uncertain' {
+  switch (openingStatus) {
+    case 'OPEN':
+      return 'open';
+    case 'CLOSED':
+      return 'closed';
+    case 'LIKELY_OPEN':
+    case 'LIKELY_CLOSED':
+    case 'UNKNOWN':
+      return 'uncertain';
   }
 }
 

@@ -11,8 +11,8 @@ import { ACCESS_TYPES, FEATURE_STATES, PRICE_STATES } from './types';
  * - every field is required, so an adapter must write `unknown` or `null` on
  *   purpose rather than leave a field out and have it defaulted;
  * - unknown keys are rejected, so a typo cannot silently drop a value;
- * - nothing here parses opening hours, resolves access from a venue type, or
- *   turns an absent tag into `no`. Those are later tasks and explicit rules.
+ * - nothing here resolves access from a venue type or turns an absent tag
+ *   into `no`. Those remain later tasks and explicit rules.
  *
  * Raw fields carry what the source said, unchanged, for the source record.
  */
@@ -23,6 +23,26 @@ const featureState = z.enum(FEATURE_STATES);
 export const positionSchema = z.strictObject({
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
+});
+
+/**
+ * Mirrors `lib/opening-hours/types.ts`'s `NormalizedOpeningHours` (TASK-013).
+ * Duplicated here, rather than imported, so this contract module has no
+ * dependency on the parsing module — only on the shape it produces.
+ */
+const openingHoursRuleSchema = z.strictObject({
+  days: z.array(z.number().int().min(0).max(6)),
+  closed: z.boolean(),
+  ranges: z.array(
+    z.strictObject({
+      start: z.number().int().min(0),
+      end: z.number().int().min(0),
+    }),
+  ),
+});
+
+export const normalizedOpeningHoursSchema = z.strictObject({
+  rules: z.array(openingHoursRuleSchema),
 });
 
 export const normalizedSourceRecordSchema = z.strictObject({
@@ -41,8 +61,13 @@ export const normalizedSourceRecordSchema = z.strictObject({
   name: z.string().min(1).nullable(),
   operatorName: z.string().min(1).nullable(),
 
-  /** Unparsed. TASK-013 owns the parsing. */
+  /** Unparsed, as the source gave it. */
   openingHoursRaw: z.string().min(1).nullable(),
+  /** `true` only for an explicit "24/7" source value (TASK-013). */
+  open24h: z.boolean().nullable(),
+  /** The bounded-grammar parse of `openingHoursRaw` (TASK-013), or `null`
+   * when there was nothing to parse or parsing failed. */
+  openingHoursNormalized: normalizedOpeningHoursSchema.nullable(),
 
   priceState: z.enum(PRICE_STATES),
   chargeRaw: z.string().min(1).nullable(),

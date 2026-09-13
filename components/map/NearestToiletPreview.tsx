@@ -1,7 +1,19 @@
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
-import { distanceLine, openingStatusLabel, priceLabel } from '@/lib/toilets/preview-copy';
+import {
+  distanceLine,
+  openingStatusLabel,
+  openingStatusVariant,
+  priceLabel,
+} from '@/lib/toilets/preview-copy';
 import styles from './MapShell.module.css';
+
+/** Maps `openingStatusVariant`'s result to the badge colour class (TASK-013). */
+const STATUS_BADGE_CLASS: Record<ReturnType<typeof openingStatusVariant>, string | undefined> = {
+  open: styles.previewBadgeStatusOpen,
+  closed: styles.previewBadgeStatusClosed,
+  uncertain: styles.previewBadgeStatusUncertain,
+};
 
 /**
  * The collapsed "nearest sensible toilet" preview (TASK-010). Always the
@@ -35,7 +47,9 @@ export function NearestToiletPreview({
         {distanceLine(toilet.distanceMeters, toilet.approxWalkingMinutes, dictionary)}
       </p>
       <div className={styles.previewBadges}>
-        <span className={styles.previewBadgeStatus}>
+        <span
+          className={`${styles.previewBadgeStatus} ${STATUS_BADGE_CLASS[openingStatusVariant(toilet.openingStatus)] ?? ''}`}
+        >
           {openingStatusLabel(toilet.openingStatus, dictionary)}
         </span>
         <span className={styles.previewBadgePrice}>

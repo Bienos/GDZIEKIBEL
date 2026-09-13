@@ -25,6 +25,8 @@ interface NearbyRow {
   wheelchair: NearbyToiletRow['wheelchair'];
   changing_table: NearbyToiletRow['changingTable'];
   unisex: NearbyToiletRow['unisex'];
+  open_24h: NearbyToiletRow['open24h'];
+  opening_hours_normalized: NearbyToiletRow['openingHoursNormalized'];
 }
 
 export async function findNearbyToilets(
@@ -43,7 +45,9 @@ export async function findNearbyToilets(
        access_type,
        wheelchair,
        changing_table,
-       unisex
+       unisex,
+       open_24h,
+       opening_hours_normalized
      FROM toilets
      WHERE canonical_status = 'active'
        AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
@@ -64,5 +68,7 @@ export async function findNearbyToilets(
     wheelchair: row.wheelchair,
     changingTable: row.changing_table,
     unisex: row.unisex,
+    open24h: row.open_24h,
+    openingHoursNormalized: row.opening_hours_normalized,
   }));
 }

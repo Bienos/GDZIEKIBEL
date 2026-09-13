@@ -216,6 +216,40 @@ describe.skipIf(!hasDatabaseUrl)('ingestion upsert', () => {
     expect(row.rows[0]?.not_seen_since).toBeNull();
   });
 
+  it('writes open_24h and opening_hours_normalized (TASK-013) to the canonical toilet', async () => {
+    await withTransaction((client) =>
+      upsertSourceRecords(
+        client,
+        SOURCE,
+        [
+          record({
+            sourceRecordId: 'node/1',
+            open24h: null,
+            openingHoursNormalized: {
+              rules: [{ days: [0, 1, 2, 3, 4], closed: false, ranges: [{ start: 480, end: 960 }] }],
+            },
+          }),
+        ],
+        new Date(),
+      ),
+    );
+
+    const toilet = await getPool().query<{
+      open_24h: boolean | null;
+      opening_hours_normalized: unknown;
+    }>(
+      `SELECT t.open_24h, t.opening_hours_normalized FROM toilets t
+         JOIN toilet_source_records s ON s.toilet_id = t.id
+        WHERE s.source_name = $1`,
+      [SOURCE],
+    );
+
+    expect(toilet.rows[0]?.open_24h).toBeNull();
+    expect(toilet.rows[0]?.opening_hours_normalized).toEqual({
+      rules: [{ days: [0, 1, 2, 3, 4], closed: false, ranges: [{ start: 480, end: 960 }] }],
+    });
+  });
+
   it('stores the normalised payload and never an OSM username', async () => {
     await withTransaction((client) =>
       upsertSourceRecords(client, SOURCE, [record({ sourceRecordId: 'node/1' })], new Date()),

@@ -103,6 +103,11 @@ async function main(): Promise<void> {
 
   const records: NormalizedSourceRecord[] = [];
   const rejections: { key: string; reason: string }[] = [];
+  // Raw hours existed but did not fit the bounded grammar
+  // (lib/opening-hours/parse-opening-hours.ts): not a rejected element, its
+  // opening status is just UNKNOWN. ARCHITECTURE.md section 10: "do not
+  // silently discard malformed hours; record ingestion warnings."
+  const unparsedHours: { key: string; raw: string }[] = [];
 
   for (const element of elements) {
     const result = validateElement(element);
@@ -110,7 +115,15 @@ async function main(): Promise<void> {
       rejections.push({ key: result.key, reason: result.reason });
       continue;
     }
-    records.push(normalizeElement(result.element));
+    const record = normalizeElement(result.element);
+    records.push(record);
+    if (
+      record.openingHoursRaw !== null &&
+      !record.open24h &&
+      record.openingHoursNormalized === null
+    ) {
+      unparsedHours.push({ key: record.sourceRecordId, raw: record.openingHoursRaw });
+    }
   }
 
   out('');
@@ -120,6 +133,12 @@ async function main(): Promise<void> {
     out(`  rejected ${rejection.key}: ${rejection.reason}`);
   }
   if (rejections.length > 20) out(`  ... and ${rejections.length - 20} more`);
+
+  out(`Opening hours: ${unparsedHours.length} unparsed, kept as UNKNOWN status`);
+  for (const item of unparsedHours.slice(0, 20)) {
+    out(`  unparsed ${item.key}: "${item.raw}"`);
+  }
+  if (unparsedHours.length > 20) out(`  ... and ${unparsedHours.length - 20} more`);
 
   if (dryRun) {
     out('\nDry run: nothing written.');

@@ -72,7 +72,9 @@ lib/
                       yet, see ADR 0006
   toilets/nearby-response.ts
                       shapes one DB row into the nearby-API response item;
-                      enum values pass through unchanged, never booleans
+                      enum values pass through unchanged, never booleans;
+                      openingStatus is now computed by
+                      computeOpeningStatus, given an explicit `now` (TASK-013)
   toilets/fetch-nearby.ts
                       client-side call to the nearby API; never throws
   toilets/marker-diff.ts
@@ -88,10 +90,16 @@ lib/
                       confidence, a named metre-penalty table (TASK-009,
                       ADR 0007); pure, no database
   toilets/preview-copy.ts
-                      maps priceState/openingStatus to dictionary copy and
-                      formats the distance/ETA line for the nearest-toilet
-                      preview (TASK-010); pure, no React/DOM; reused by the
-                      detail sheet
+                      maps priceState/openingStatus to dictionary copy and a
+                      status-colour variant, and formats the distance/ETA
+                      line, for the nearest-toilet preview (TASK-010, status
+                      variants added TASK-013); pure, no React/DOM; reused
+                      by the detail sheet
+  opening-hours/types.ts, warsaw-time.ts, parse-opening-hours.ts, compute-status.ts
+                      TASK-013: a bounded OSM opening_hours grammar parser,
+                      an Intl-based Warsaw weekday/time helper, and status
+                      computation qualified by confidence_level (ADR 0009);
+                      all pure, no I/O
   toilets/detail-copy.ts
                       maps FeatureState/ConfidenceLevel to dictionary copy
                       for the toilet detail sheet (TASK-011); pure, no
@@ -100,11 +108,15 @@ lib/
                       builds a destination-only Google Maps walking URL
                       (TASK-012, ADR 0008); Apple Maps deferred until a
                       session can test real app-opening behaviour
-  ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
+  ingest/upsert.ts    source-agnostic write path; never deletes, marks
+                      not_seen_since; writes open_24h/opening_hours_normalized
+                      since TASK-013
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
+                      (normalize.ts derives opening-hours fields since TASK-013)
 db/
   queries/nearby.ts   the nearby-toilets PostGIS query (TASK-007); active-only,
-                      distance order, server-capped result count
+                      distance order, server-capped result count; selects
+                      open_24h/opening_hours_normalized since TASK-013
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -113,7 +125,9 @@ db/
     *_toilet-schema.sql    toilets, toilet_source_records, ingestion_runs, enums
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
-  ingest/osm.ts       the ingestion command (pnpm ingest:osm)
+  ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
+                      warning summary for raw opening-hours text that did
+                      not parse (TASK-013), never a silent drop
   research/           one-off source probes; not application code, not in CI
 tests/
   unit/               no external services
@@ -166,6 +180,10 @@ Ownership:
 - `docs/adr/0008-external-navigation-url.md` — a destination-only Google
   Maps web URL as the sole navigation provider; Apple Maps deferred until
   testable on a real device.
+- `docs/adr/0009-opening-hours-status.md` — a bounded `opening_hours` grammar
+  (24/7 and simple weekly rules, not public holidays or date ranges), and
+  qualifying a real day/time match into `LIKELY_OPEN`/`LIKELY_CLOSED` unless
+  `confidence_level` is `'high'`.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -190,11 +208,18 @@ status/price, accessibility features, and a confidence hint, plus a real
 only Google Maps walking-directions link — this completes Milestone 1's
 first core journey end to end, though this session cannot verify the link
 actually reaches a working Google Maps route (no egress to `google.com`).
-Hours display and the report control still do not exist on that sheet
-(each is a later task's job; see `tasks/011-toilet-detail-sheet.md`). No
-filters or accessible list view exists yet. No deduplication, opening-hours
-parsing, real confidence scoring, reporting, analytics or error-tracking
-code exists. Ingestion exists but has never run against the live source,
-and the map — tiles, the location dot, and the toilet markers — has never
-been visually observed rendering for real from this session. Those areas
-are owned by later tasks.
+`openingStatus` is now a real, computed value (TASK-013, ADR 0009): a
+bounded `opening_hours` grammar (24/7 and simple weekly rules; not public
+holidays or date ranges) parsed at ingestion time, evaluated against the
+current Warsaw-local moment at request time, and qualified into
+`LIKELY_OPEN`/`LIKELY_CLOSED` unless `confidence_level` is `'high'` — which
+nothing produces yet, so every status computed today is qualified, correct
+given today's single, uncorroborated source. The report control still does
+not exist on the detail sheet (`TASK-020`'s job). No filters or accessible
+list view exists yet. No deduplication, real confidence scoring, reporting,
+analytics or error-tracking code exists. Ingestion exists but has never run
+against the live source — so the opening-hours parser has never seen a
+real OSM string, only constructed fixtures matching the documented grammar
+— and the map — tiles, the location dot, and the toilet markers — has
+never been visually observed rendering for real from this session. Those
+areas are owned by later tasks.

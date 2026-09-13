@@ -58,6 +58,10 @@ export interface Dictionary {
   previewLabel: string;
   previewDistanceUnit: string;
   previewWalkingUnit: string;
+  previewStatusOpen: string;
+  previewStatusClosed: string;
+  previewStatusLikelyOpen: string;
+  previewStatusLikelyClosed: string;
   previewStatusUnknown: string;
   previewPriceFree: string;
   previewPricePaid: string;
@@ -115,6 +119,10 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     previewLabel: 'NAJBLIŻSZY SENSOWNY KIBEL',
     previewDistanceUnit: 'M',
     previewWalkingUnit: 'MIN PIESZO',
+    previewStatusOpen: 'OTWARTY',
+    previewStatusClosed: 'ZAMKNIĘTY',
+    previewStatusLikelyOpen: 'RACZEJ OTWARTY',
+    previewStatusLikelyClosed: 'RACZEJ ZAMKNIĘTY',
     previewStatusUnknown: 'STATUS NIEPEWNY',
     previewPriceFree: 'ZA DARMO',
     previewPricePaid: 'PŁATNY',
@@ -157,6 +165,10 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     previewLabel: 'THE NEAREST TOILET WORTH USING',
     previewDistanceUnit: 'm',
     previewWalkingUnit: 'min walk',
+    previewStatusOpen: 'OPEN NOW',
+    previewStatusClosed: 'CLOSED',
+    previewStatusLikelyOpen: 'LIKELY OPEN',
+    previewStatusLikelyClosed: 'LIKELY CLOSED',
     previewStatusUnknown: 'STATUS UNKNOWN',
     previewPriceFree: 'FREE',
     previewPricePaid: 'PAID',

@@ -1,3 +1,5 @@
+import { computeOpeningStatus } from '../opening-hours/compute-status';
+import type { NormalizedOpeningHours, OpeningStatus } from '../opening-hours/types';
 import { approxWalkingMinutes } from './walking-time';
 import type { AccessType, ConfidenceLevel, FeatureState, PriceState } from './types';
 
@@ -20,6 +22,8 @@ export interface NearbyToiletRow {
   wheelchair: FeatureState;
   changingTable: FeatureState;
   unisex: FeatureState;
+  open24h: boolean | null;
+  openingHoursNormalized: NormalizedOpeningHours | null;
 }
 
 export interface NearbyToiletResult {
@@ -30,11 +34,11 @@ export interface NearbyToiletResult {
   distanceMeters: number;
   approxWalkingMinutes: number;
   /**
-   * Always "UNKNOWN" until TASK-013 computes a real value. Not a bug: see
-   * ADR 0006. Kept as a literal type so a future task changing this is a
-   * visible type change here, not a silent behaviour change.
+   * Computed by `computeOpeningStatus` (TASK-013) from the row's stored
+   * hours, `now`, and `confidenceLevel`. See
+   * `docs/adr/0009-opening-hours-status.md`.
    */
-  openingStatus: 'UNKNOWN';
+  openingStatus: OpeningStatus;
   priceState: PriceState;
   confidenceLevel: ConfidenceLevel;
   accessType: AccessType;
@@ -45,7 +49,12 @@ export interface NearbyToiletResult {
   };
 }
 
-export function toNearbyResult(row: NearbyToiletRow): NearbyToiletResult {
+/**
+ * `now` is an explicit parameter — never read internally via `Date.now()` —
+ * so every result in one API response reflects the same evaluated moment,
+ * and so this stays testable against fixed instants.
+ */
+export function toNearbyResult(row: NearbyToiletRow, now: Date): NearbyToiletResult {
   return {
     id: row.id,
     name: row.name,
@@ -53,7 +62,11 @@ export function toNearbyResult(row: NearbyToiletRow): NearbyToiletResult {
     lng: row.lng,
     distanceMeters: row.distanceMeters,
     approxWalkingMinutes: approxWalkingMinutes(row.distanceMeters),
-    openingStatus: 'UNKNOWN',
+    openingStatus: computeOpeningStatus(
+      { open24h: row.open24h, openingHoursNormalized: row.openingHoursNormalized },
+      row.confidenceLevel,
+      now,
+    ),
     priceState: row.priceState,
     confidenceLevel: row.confidenceLevel,
     accessType: row.accessType,

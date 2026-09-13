@@ -83,6 +83,10 @@ describe('normalizeElement', () => {
     expect(record.name).toBe('Toaleta Plac Defilad');
     expect(record.operatorName).toBe('ZOM');
     expect(record.openingHoursRaw).toBe('Mo-Su 06:00-22:00');
+    expect(record.open24h).toBeNull();
+    expect(record.openingHoursNormalized).toEqual({
+      rules: [{ days: [0, 1, 2, 3, 4, 5, 6], closed: false, ranges: [{ start: 360, end: 1320 }] }],
+    });
     expect(record.priceState).toBe('free');
     expect(record.accessType).toBe('public_unconditional');
     expect(record.wheelchair).toBe('yes');
@@ -108,6 +112,8 @@ describe('normalizeElement', () => {
     expect(record.indoor).toBeNull();
     expect(record.name).toBeNull();
     expect(record.openingHoursRaw).toBeNull();
+    expect(record.open24h).toBeNull();
+    expect(record.openingHoursNormalized).toBeNull();
     expect(record.sourceVerifiedAt).toBeNull();
   });
 

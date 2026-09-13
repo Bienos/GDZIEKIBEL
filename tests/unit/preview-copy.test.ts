@@ -1,14 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { getDictionary } from '@/lib/i18n/dictionaries';
-import { distanceLine, openingStatusLabel, priceLabel } from '@/lib/toilets/preview-copy';
+import {
+  distanceLine,
+  openingStatusLabel,
+  openingStatusVariant,
+  priceLabel,
+} from '@/lib/toilets/preview-copy';
 
 const pl = getDictionary('pl');
 const en = getDictionary('en');
 
 describe('openingStatusLabel', () => {
-  it('reports the unknown-status copy, the only reachable value today', () => {
+  it('reports each of the five real states distinctly', () => {
+    expect(openingStatusLabel('OPEN', pl)).toBe('OTWARTY');
+    expect(openingStatusLabel('CLOSED', pl)).toBe('ZAMKNIĘTY');
+    expect(openingStatusLabel('LIKELY_OPEN', pl)).toBe('RACZEJ OTWARTY');
+    expect(openingStatusLabel('LIKELY_CLOSED', pl)).toBe('RACZEJ ZAMKNIĘTY');
     expect(openingStatusLabel('UNKNOWN', pl)).toBe('STATUS NIEPEWNY');
-    expect(openingStatusLabel('UNKNOWN', en)).toBe('STATUS UNKNOWN');
+  });
+
+  it('never ships the Polish string as the English one', () => {
+    for (const status of ['OPEN', 'CLOSED', 'LIKELY_OPEN', 'LIKELY_CLOSED', 'UNKNOWN'] as const) {
+      expect(openingStatusLabel(status, en)).not.toBe(openingStatusLabel(status, pl));
+    }
+  });
+});
+
+describe('openingStatusVariant', () => {
+  it('maps OPEN and CLOSED to their own colour variant', () => {
+    expect(openingStatusVariant('OPEN')).toBe('open');
+    expect(openingStatusVariant('CLOSED')).toBe('closed');
+  });
+
+  it('maps every uncertain state — LIKELY_OPEN, LIKELY_CLOSED, UNKNOWN — to uncertain', () => {
+    expect(openingStatusVariant('LIKELY_OPEN')).toBe('uncertain');
+    expect(openingStatusVariant('LIKELY_CLOSED')).toBe('uncertain');
+    expect(openingStatusVariant('UNKNOWN')).toBe('uncertain');
   });
 });
 

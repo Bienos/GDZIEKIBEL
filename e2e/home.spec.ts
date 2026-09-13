@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012 smoke tests: the home page loads with the
- * GdzieKibel.pl identity, the map shell's tile fallback state (since no
+ * TASK-005/006/008/010/011/012/013 smoke tests: the home page loads with
+ * the GdzieKibel.pl identity, the map shell's tile fallback state (since no
  * environment available to this suite holds a real MapTiler key — see
  * docs/adr/0005-map-tile-provider.md), the location permission flow, the
  * nearby-toilets fetch, the nearest-toilet preview, the toilet detail sheet
- * it opens into, and that sheet's navigation CTA.
+ * it opens into, that sheet's navigation CTA, and a real (non-`UNKNOWN`)
+ * opening status rendering its own label and colour.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -282,4 +283,41 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
 
   await expect(sheet).toHaveCount(0);
   await expect(preview).toBeVisible();
+});
+
+test('a real OPEN status renders its own label and colour, not the uncertain one (TASK-013)', async ({
+  page,
+}) => {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            id: '22222222-2222-2222-2222-222222222222',
+            name: 'Toaleta Otwarta',
+            lat: 52.2297,
+            lng: 21.0122,
+            distanceMeters: 100,
+            approxWalkingMinutes: 2,
+            openingStatus: 'OPEN',
+            priceState: 'free',
+            confidenceLevel: 'low',
+            accessType: 'public_unconditional',
+            features: { wheelchair: 'unknown', changingTable: 'unknown', unisex: 'unknown' },
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  const preview = page.getByRole('button', { name: 'Otwórz szczegóły toalety: Toaleta Otwarta' });
+  const statusBadge = preview.getByText('OTWARTY', { exact: true });
+  await expect(statusBadge).toBeVisible();
+  // --status-open (--color-status-green: #9bea88), not the uncertain orange.
+  await expect(statusBadge).toHaveCSS('background-color', 'rgb(155, 234, 136)');
 });

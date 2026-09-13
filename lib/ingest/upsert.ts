@@ -42,6 +42,8 @@ function canonicalValues(record: NormalizedSourceRecord) {
     record.female,
     record.unisex,
     record.openingHoursRaw,
+    record.open24h,
+    record.openingHoursNormalized === null ? null : JSON.stringify(record.openingHoursNormalized),
     record.level,
     record.indoor,
     record.sourceVerifiedAt,
@@ -53,11 +55,11 @@ const INSERT_TOILET = `
   INSERT INTO toilets (
     name, geom, access_type, price_state,
     wheelchair, changing_table, male, female, unisex,
-    opening_hours_raw, level, indoor, verified_at, payment_methods
+    opening_hours_raw, open_24h, opening_hours_normalized, level, indoor, verified_at, payment_methods
   ) VALUES (
     $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5,
     $6, $7, $8, $9, $10,
-    $11, $12, $13, $14, $15::jsonb
+    $11, $12, $13::jsonb, $14, $15, $16, $17::jsonb
   )
   RETURNING id`;
 
@@ -67,9 +69,10 @@ const UPDATE_TOILET = `
     geom = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
     access_type = $4, price_state = $5,
     wheelchair = $6, changing_table = $7, male = $8, female = $9, unisex = $10,
-    opening_hours_raw = $11, level = $12, indoor = $13, verified_at = $14,
-    payment_methods = $15::jsonb
-  WHERE id = $16`;
+    opening_hours_raw = $11, open_24h = $12, opening_hours_normalized = $13::jsonb,
+    level = $14, indoor = $15, verified_at = $16,
+    payment_methods = $17::jsonb
+  WHERE id = $18`;
 
 /**
  * Applies one run's records inside the caller's transaction.

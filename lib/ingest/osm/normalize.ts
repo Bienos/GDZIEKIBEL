@@ -1,3 +1,4 @@
+import { deriveOpeningHours } from '@/lib/opening-hours/parse-opening-hours';
 import {
   parseNormalizedSourceRecord,
   type NormalizedSourceRecord,
@@ -85,6 +86,8 @@ export function normalizeElement(element: ValidElement): NormalizedSourceRecord 
     (item): item is string => item !== null,
   );
 
+  const openingHoursRaw = nonEmpty(tags.opening_hours);
+
   const candidate = {
     sourceName: OSM_SOURCE_NAME,
     sourceRecordId: `${element.type}/${element.id}`,
@@ -97,7 +100,8 @@ export function normalizeElement(element: ValidElement): NormalizedSourceRecord 
     name: nonEmpty(tags.name),
     operatorName: nonEmpty(tags.operator),
 
-    openingHoursRaw: nonEmpty(tags.opening_hours),
+    openingHoursRaw,
+    ...deriveOpeningHours(openingHoursRaw),
 
     priceState: priceState(tags.fee),
     chargeRaw: nonEmpty(tags.charge),

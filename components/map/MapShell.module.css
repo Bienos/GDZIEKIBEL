@@ -284,14 +284,25 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  color: var(--text-primary);
 }
 
-/* Only "unknown" is reachable until TASK-013 (see preview-copy.ts); reuses
-   the same uncertain-state colour as the toilet marker rather than
-   inventing a new token. */
-.previewBadgeStatus {
+/* Status colour varies with the real computed status (TASK-013,
+   openingStatusVariant in preview-copy.ts): green/red/orange, never colour
+   alone (DESIGN.md section 8). Applied alongside .previewBadgeStatus, which
+   carries the shared pill shape. */
+.previewBadgeStatusOpen {
+  background: var(--status-open);
+}
+
+.previewBadgeStatusClosed {
+  background: var(--status-closed);
+}
+
+/* Covers both LIKELY_* states and UNKNOWN: none of them is confidently one
+   or the other, the same signal the uncertain marker colour already gives. */
+.previewBadgeStatusUncertain {
   background: var(--status-uncertain);
-  color: var(--text-primary);
 }
 
 /* Neither PRODUCT.md nor DESIGN.md specifies colour-coding for price, so
@@ -299,7 +310,6 @@
 .previewBadgePrice {
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
 }
 
 /* previewBadgeStatus/previewBadgePrice above are shared with the toilet

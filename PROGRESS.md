@@ -602,6 +602,78 @@ generation (nothing a round-trip would add, since coordinates are already
 client-side), and any change to the report control, hours, ranking, or the
 preview.
 
+### TASK-013 — Opening-hours normalisation/status
+
+Complete on 2026-09-13. Specified in `tasks/013-opening-hours-status.md`;
+decision recorded in `docs/adr/0009-opening-hours-status.md`. First task of
+Milestone 2 ("Real utility").
+
+Created: `lib/opening-hours/parse-opening-hours.ts` parses a bounded subset
+of the OSM `opening_hours` micro-syntax (`24/7`; `;`-separated weekly rules
+of `<days> <time-ranges>` or `<days> off`; comma/range day lists; comma-
+separated `HH:MM-HH:MM` time ranges, including one crossing midnight) —
+anything outside this (public holidays, date/season ranges, a rule with no
+day part) fails the whole string, never a partial reading.
+`lib/opening-hours/compute-status.ts` evaluates that structure against a
+Warsaw-local moment (`lib/opening-hours/warsaw-time.ts`, built on
+`Intl.DateTimeFormat`, no date-library dependency) to produce
+`OPEN`/`CLOSED`/`LIKELY_OPEN`/`LIKELY_CLOSED`/`UNKNOWN`.
+
+**The confidence-qualification rule.** A real day/time match is reported as
+plain `OPEN`/`CLOSED` only when `confidence_level` is `'high'`; `'medium'`
+or `'low'` — every toilet ingested today — gets `LIKELY_OPEN`/
+`LIKELY_CLOSED` instead. `PRODUCT.md` section 10 names this requirement for
+`OPEN` specifically ("never claim `OPEN` without sufficiently trusted
+evidence"); this task applies it symmetrically to `CLOSED` too, as the ADR
+explains. Every status computed against real ingested data today is
+therefore qualified, not plain — correct given a single, uncorroborated
+source, not a bug.
+
+**Wired through the whole pipeline.** `lib/toilets/normalized-source-record.ts`
+now requires `open24h`/`openingHoursNormalized`; `lib/ingest/osm/normalize.ts`
+derives them from the OSM `opening_hours` tag; `lib/ingest/upsert.ts` writes
+them to the schema's existing (since `TASK-003`, unused until now)
+`open_24h`/`opening_hours_normalized` columns; `db/queries/nearby.ts` selects
+them; `lib/toilets/nearby-response.ts`'s `toNearbyResult` now takes an
+explicit `now: Date` and computes the real status, replacing the constant
+`'UNKNOWN'` every result carried since `TASK-007`; the route computes `now`
+once per request so every result in one response reflects the same instant.
+The preview and detail sheet (`lib/toilets/preview-copy.ts`'s widened
+`openingStatusLabel`, plus a new `openingStatusVariant`) show the matching
+badge text and colour — green/red/orange, reusing `--status-open`/
+`--status-closed`/`--status-uncertain` (defined since `TASK-001`'s design
+tokens, unused until now).
+
+**Ingestion warnings, not silent discards.** `scripts/ingest/osm.ts` now
+prints a summary of every element whose raw hours text existed but did not
+fit the bounded grammar (`ARCHITECTURE.md` section 10's "record ingestion
+warnings"), the same pattern already used for rejected elements. No schema
+change: a printed warning satisfies this without a new `ingestion_runs`
+column.
+
+Verified: lint, format, typecheck, 163 unit tests (28 new — the parser,
+the status computation including the overnight-crossing-midnight case,
+the Warsaw-time helper, the widened preview-copy label/variant, and two
+extended existing OSM-ingest assertions), 27 integration tests (2 new,
+proving the new columns round-trip through a real PostGIS database via
+both `findNearbyToilets` directly and the full `upsertSourceRecords` write
+path), the production build, and 10 Playwright tests (1 new, asserting a
+real `OPEN` status renders `OTWARTY` with the real computed
+`--status-open` background colour, `rgb(155, 234, 136)`, against a running
+production build — not just the previously-only-reachable `UNKNOWN`).
+
+**What is, and is not, verified.** The parser's coverage is proven against
+constructed fixtures matching the documented OSM grammar — this session
+cannot re-run ingestion against the live Overpass source (the same,
+already-documented network limitation), so no real Warsaw OSM
+`opening_hours` string has ever been fed through this parser. Whether real
+data mostly fits the bounded grammar, or mostly needs `PH`/date-range
+support later, is unknown until a live ingestion run happens.
+
+Not created, by design: parsing for public holidays or date/season ranges,
+populating `seasonal`, a new `ingestion_runs` warnings column, and any
+change to ranking, filters, or the list view.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -637,12 +709,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 134 tests in 21 files                          |
+| `pnpm test:unit`          | pass, 163 tests in 24 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 25 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 9 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA) |
+| `pnpm test:integration`   | pass, 27 tests in 4 files                            |
+| `pnpm test:e2e`           | pass, 10 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA, real opening-status colour) |
 
 Also observed:
 
@@ -734,12 +806,14 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-013 — Opening-hours normalisation/status` per `PLAN.md`, the first
-   task of Milestone 2 ("Real utility"): source-supported hours produce
-   `OPEN`/`CLOSED`/`LIKELY_OPEN`/`LIKELY_CLOSED`/`UNKNOWN` states in the
-   Warsaw timezone, replacing the nearby API's current constant `UNKNOWN`
-   (`docs/adr/0006-nearby-api-contract.md`). Needs a `tasks/013-*.md` file.
-   `PRODUCT.md` section 10 governs the state model and its "never claim
-   `OPEN` without sufficiently trusted evidence" rule; `lib/ingest/osm/
-   normalize.ts` already stores `opening_hours_raw` but nothing parses it
-   yet.
+2. `TASK-014 — Price/free state` per `PLAN.md`: "free/paid/unknown is
+   normalised and rendered consistently." Needs a `tasks/014-*.md` file,
+   whose first job is honestly scoping what remains: `price_state` has
+   been normalised since `TASK-003`/`TASK-004` and rendered consistently
+   since `TASK-010`/`TASK-011` (`lib/toilets/preview-copy.ts`'s
+   `priceLabel`). What plausibly remains — `price_amount_minor`/`currency`
+   (present in the schema, never populated) and `payment_methods`
+   normalisation (`upsert.ts`'s own comment: "Normalised later by
+   TASK-014") — needs checking against real OSM `fee`/`charge`/`payment:*`
+   tag data before deciding real scope, the same way `TASK-013` first
+   established what was and was not already done.
