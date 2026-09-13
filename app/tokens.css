@@ -1,0 +1,68 @@
+/*
+ * GdzieKibel.pl design tokens.
+ *
+ * Owned by DESIGN.md sections 3-5. Raw palette values are v1 implementation
+ * targets, not immutable brand law; adjust only after contrast checks.
+ * Keep tokens framework-agnostic: components read semantic aliases, never raw
+ * hex values.
+ */
+
+:root {
+  /* Raw palette (DESIGN.md 4 - Raw palette) */
+  --color-ink-950: #0b0b0b;
+  --color-paper-50: #f5f2ea;
+  --color-paper-0: #ffffff;
+  --color-signal-yellow: #ffd800;
+  --color-hot-pink: #ff3d8d;
+  --color-status-green: #9bea88;
+  --color-status-red: #ff6b5f;
+  --color-status-orange: #ffb547;
+  --color-muted-500: #767676;
+  --color-line-200: #d8d5ce;
+
+  /* Semantic tokens (DESIGN.md 4 - Semantic tokens) */
+  --bg-primary: var(--color-paper-50);
+  --bg-inverse: var(--color-ink-950);
+  --text-primary: var(--color-ink-950);
+  --text-inverse: var(--color-paper-50);
+  --text-muted: var(--color-muted-500);
+  --border-subtle: var(--color-line-200);
+
+  /* Signal yellow is the primary action colour. Hot pink is an editorial
+     accent only, never a default interactive colour (DESIGN.md 4 - Rule). */
+  --action-primary: var(--color-signal-yellow);
+  --accent-editorial: var(--color-hot-pink);
+
+  /* Functional states must not depend on pink/yellow alone (BRAND.md 9). */
+  --status-open: var(--color-status-green);
+  --status-closed: var(--color-status-red);
+  --status-uncertain: var(--color-status-orange);
+
+  /* Spacing scale, 8 px base unit (DESIGN.md 3 - Spacing scale) */
+  --space-base: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Layout baseline (DESIGN.md 3 - Grid) */
+  --page-padding-inline: var(--space-4);
+
+  /* Typography roles kept abstract so the exact family can change later
+     without layout rewrites (DESIGN.md 5). */
+  --font-display:
+    'Helvetica Neue', 'Arial Narrow', Arial, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+
+  /* Type scale, mobile (DESIGN.md 5 - Type scale) */
+  --type-display-l-size: 40px;
+  --type-display-l-leading: 40px;
+  --type-body-size: 16px;
+  --type-body-leading: 24px;
+  --type-meta-size: 12px;
+  --type-meta-leading: 16px;
+}

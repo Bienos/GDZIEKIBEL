@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+coverage
+pnpm-lock.yaml
+playwright-report
+test-results
+
+# Planning/control documents are authored prose and must not be reformatted.
+*.md
+docs/
+tasks/

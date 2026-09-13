@@ -1,0 +1,24 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Respect dynamic viewport height rather than assuming fixed 100vh
+     (DESIGN.md 3 - Safe-area handling). */
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+  -webkit-font-smoothing: antialiased;
+}
