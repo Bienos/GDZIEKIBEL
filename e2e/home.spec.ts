@@ -106,20 +106,62 @@ test('a denied, unavailable, or timed-out location shows the one shared screen',
 });
 
 test.describe('with a real browser location grant', () => {
-  test.use({
-    permissions: ['geolocation'],
-    geolocation: { latitude: 52.2297, longitude: 21.0122 },
-  });
+  // Deliberately not the default Warsaw centre, so a test can tell the
+  // mount-time fetch and the post-grant refetch apart by their coordinates.
+  const GRANTED_LOCATION = { latitude: 52.25, longitude: 21.05 };
+  test.use({ permissions: ['geolocation'], geolocation: GRANTED_LOCATION });
 
   test('a granted location dismisses the ask, even with no map to place it on', async ({
     page,
   }) => {
+    await page.route('**/api/toilets/nearby', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' }),
+    );
+
     await page.goto('/pl');
     await page.getByRole('button', { name: 'UDOSTĘPNIJ LOKALIZACJĘ' }).click();
 
     await expect(page.getByRole('heading', { name: 'POZWÓL NAM ZNALEŹĆ KIBEL.' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'NIE WIEMY, GDZIE JESTEŚ.' })).toHaveCount(0);
-    // Coordinates are never sent anywhere in this task; nothing to assert
-    // beyond the sheet correctly leaving the "asking" state.
   });
+
+  test('a granted location re-queries nearby toilets centred on the real position', async ({
+    page,
+  }) => {
+    const requestBodies: unknown[] = [];
+    await page.route('**/api/toilets/nearby', async (route) => {
+      requestBodies.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' });
+    });
+
+    await page.goto('/pl');
+    // TASK-008's mount-time fetch, centred on the default Warsaw view.
+    await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(1);
+    expect(requestBodies[0]).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
+
+    await page.getByRole('button', { name: 'UDOSTĘPNIJ LOKALIZACJĘ' }).click();
+
+    // A second request, centred on the granted coordinates, distinct from
+    // the first request's default Warsaw centre.
+    await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(2);
+    expect(requestBodies.at(-1)).toEqual({
+      location: { lat: GRANTED_LOCATION.latitude, lng: GRANTED_LOCATION.longitude },
+    });
+    expect(requestBodies[0]).not.toEqual(requestBodies.at(-1));
+  });
+});
+
+test('the mount-time nearby fetch runs even without a location grant', async ({ page }) => {
+  const requestBodies: unknown[] = [];
+  await page.route('**/api/toilets/nearby', async (route) => {
+    requestBodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"results":[]}' });
+  });
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  // PRODUCT.md section 6.1: manual browse must be useful without a grant.
+  await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(1);
+  expect(requestBodies[0]).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
 });

@@ -358,6 +358,57 @@ Not created, by design: filters, ranking beyond plain distance order, `GET
 /api/toilets/:id`, the reports endpoint, rate limiting, and any caller of
 this endpoint from a page.
 
+### TASK-008 — Display nearby toilets on map
+
+Complete on 2026-09-13. Specified in `tasks/008-display-nearby-toilets.md`.
+
+Created: a nearby-toilets fetch on mount, centred on the default Warsaw view
+(`lib/toilets/fetch-nearby.ts`, `lib/map/warsaw-view.ts`'s new plain-number
+exports), refetching centred on the user's real position once granted.
+`lib/toilets/marker-diff.ts` reconciles the fetched list against the
+markers already on the map, adding and removing only what changed.
+`lib/toilets/marker-element.ts` builds each marker as a plain "WC" badge,
+the one visual variant `DESIGN.md` section 8 describes that current data
+can actually produce (the API always returns `openingStatus: "UNKNOWN"` and
+only `active` toilets, so "recommended" and "known closed" have no way to
+occur yet). A clicked marker becomes visually selected via scale and a
+stronger outline, and any previously selected marker returns to normal.
+
+**Why the fetch does not wait on tiles, again.** As with `TASK-006`'s
+location ask, the fetch trigger is decoupled from the map's own load state.
+`PRODUCT.md` section 6.1 requires the manual-browse (denied/skipped) journey
+to be useful, and a map showing no toilets at all until location is granted
+would be a weak version of that. The mount-time fetch, centred on Warsaw,
+runs regardless; rendering its results as markers is a separate effect that
+is a correct no-op until a real map instance exists.
+
+**Verified without live tiles, the same way TASK-006 was.** This session has
+no working tile-provider key, so the map canvas never mounts here and
+markers can never be visually observed. What was verified instead: 114 unit
+tests including 4 new files (fetch helper, marker diff, marker label, plus
+existing coverage), and — the strongest evidence available in this
+environment — Playwright tests that intercept the real
+`POST /api/toilets/nearby` call the running app makes and assert on its
+body: one proving the mount-time fetch fires centred on Warsaw even when
+the user skips the location ask, and one proving a real browser location
+grant (via Playwright's own permission fixtures, not a mock) triggers a
+second, distinctly-centred request. A `curl` smoke test against a running
+production build, with one real row inserted, confirmed the API itself
+returns the exact shape the marker code consumes.
+
+Verified: lint, format, typecheck, 114 unit tests, 25 integration tests
+(unchanged; this task added no new database code beyond what TASK-007
+already covers), the production build, and 7 Playwright tests (2 new).
+
+Not created, by design: the detail sheet, the accessible list view
+(`TASK-015`'s own vertical slice), ranking beyond the API's existing
+distance order, marker clustering, and re-fetching on pan or zoom.
+
+**Still unverified, unchanged from TASK-005/006:** live tiles, the location
+dot, and now the toilet markers have never been observed rendering for
+real. Closing this needs a session with a working
+`NEXT_PUBLIC_MAPTILER_KEY` and egress to `api.maptiler.com`.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -393,12 +444,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 103 tests in 14 files                          |
+| `pnpm test:unit`          | pass, 114 tests in 17 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 25 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 5 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant) |
+| `pnpm test:e2e`           | pass, 7 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception) |
 
 Also observed:
 
@@ -490,7 +541,8 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-008 — Display nearby toilets on map` per `PLAN.md`, which needs a
-   `tasks/008-*.md` file. This is the task that finally calls
-   `POST /api/toilets/nearby` from the page and renders its results as
-   markers on the `MapShell` TASK-005 and TASK-006 already built.
+2. `TASK-009 — Recommendation ranking` per `PLAN.md`, which needs a
+   `tasks/009-*.md` file. `PRODUCT.md` section 11 gives the ranking order
+   (closed/uncertain vs usable, distance, confidence, access confidence,
+   filters, price) and requires the score formula documented in code and
+   tests, not an opaque number.

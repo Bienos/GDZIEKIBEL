@@ -174,3 +174,37 @@
   border: 2px solid var(--color-paper-0);
   box-shadow: 0 0 0 1px rgb(11 11 11 / 25%);
 }
+
+/* Toilet markers (TASK-008). Only the "uncertain" DESIGN.md 8 variant is
+   implemented; see MapShell.tsx and marker-element.ts for why. A plain "WC"
+   badge is legible at small size without a custom pictogram asset. */
+.toiletMarker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--text-primary);
+  background: var(--status-uncertain);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.toiletMarker:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+/* Selected state must be visually obvious beyond colour: scale and a
+   stronger outline (DESIGN.md section 8). */
+.toiletMarkerSelected {
+  transform: scale(1.35);
+  border-width: 3px;
+  border-color: var(--accent-editorial);
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}

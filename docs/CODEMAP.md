@@ -33,11 +33,13 @@ app/
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
-  map/MapShell.tsx    the Warsaw map (TASK-005) and the location permission
-                      flow (TASK-006); renders the tile fallback when no
-                      provider key is configured or the map fails to load
-                      before its first successful load, independent of
-                      that, the location ask/denied screens on mount
+  map/MapShell.tsx    the Warsaw map (TASK-005), the location permission
+                      flow (TASK-006), and nearby toilet markers with
+                      click-to-select (TASK-008); renders the tile fallback
+                      when no provider key is configured or the map fails to
+                      load before its first successful load, independent of
+                      that, the location ask/denied screens on mount and the
+                      nearby-toilets fetch centred on the default Warsaw view
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -61,6 +63,16 @@ lib/
   toilets/nearby-response.ts
                       shapes one DB row into the nearby-API response item;
                       enum values pass through unchanged, never booleans
+  toilets/fetch-nearby.ts
+                      client-side call to the nearby API; never throws
+  toilets/marker-diff.ts
+                      pure add/remove reconciliation between a marker id set
+                      and a new toilet list
+  toilets/marker-element.ts
+                      builds one toilet marker's DOM element and its
+                      selected-state toggle
+  toilets/marker-label.ts
+                      accessible name for a marker: name + rounded distance
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -131,11 +143,13 @@ Ownership:
 
 ## Not yet created
 
-A Warsaw map shell renders, and the location permission ask/grant/deny flow
-works, with no toilet markers, ranking, or bottom sheet. The nearby-toilets
-API exists and is queryable, but nothing calls it from any page yet
-(TASK-008 wires the map to it). No filters, deduplication, opening-hours
-parsing, confidence scoring, reporting, analytics or error-tracking code
-exists. Ingestion exists but has never run against the live source, and the
-map has never been visually observed with real tiles from this session.
-Those areas are owned by later tasks.
+A Warsaw map shell renders, the location permission ask/grant/deny flow
+works, and nearby toilets fetch and render as clickable, selectable markers
+(one visual state only; see ADR 0006 and TASK-008's own notes on why). No
+ranking beyond plain distance order, filters, bottom sheet, detail view, or
+accessible list view exists yet. No deduplication, opening-hours parsing,
+confidence scoring, reporting, analytics or error-tracking code exists.
+Ingestion exists but has never run against the live source, and the map —
+tiles, the location dot, and now the toilet markers — has never been
+visually observed rendering for real from this session. Those areas are
+owned by later tasks.
