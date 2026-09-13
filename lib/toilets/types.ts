@@ -41,6 +41,20 @@ export const INGESTION_RUN_STATUSES = ['running', 'succeeded', 'failed'] as cons
 export type IngestionRunStatus = (typeof INGESTION_RUN_STATUSES)[number];
 
 /**
+ * The three payment facts `docs/adr/0010-price-and-payment-normalisation.md`
+ * normalises from OSM's `payment:*` tags (TASK-014): not the full
+ * namespace, the three the research's cited user problem — needing coins,
+ * not knowing whether cash or card works — actually calls for. Never
+ * `null`: an unrecorded flag is `'unknown'`, the same rule as every other
+ * feature field.
+ */
+export interface PaymentMethods {
+  cash: FeatureState;
+  cards: FeatureState;
+  coins: FeatureState;
+}
+
+/**
  * Name of each SQL enum type paired with its TypeScript list, so the agreement
  * test can read the migration and compare without knowing the members itself.
  */

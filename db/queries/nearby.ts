@@ -20,6 +20,8 @@ interface NearbyRow {
   lng: number;
   distance_meters: number;
   price_state: NearbyToiletRow['priceState'];
+  price_amount_minor: NearbyToiletRow['priceAmountMinor'];
+  currency: NearbyToiletRow['currency'];
   confidence_level: NearbyToiletRow['confidenceLevel'];
   access_type: NearbyToiletRow['accessType'];
   wheelchair: NearbyToiletRow['wheelchair'];
@@ -27,6 +29,7 @@ interface NearbyRow {
   unisex: NearbyToiletRow['unisex'];
   open_24h: NearbyToiletRow['open24h'];
   opening_hours_normalized: NearbyToiletRow['openingHoursNormalized'];
+  payment_methods: NearbyToiletRow['paymentMethods'];
 }
 
 export async function findNearbyToilets(
@@ -41,13 +44,16 @@ export async function findNearbyToilets(
        ST_Y(geom::geometry) AS lat,
        ST_Distance(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS distance_meters,
        price_state,
+       price_amount_minor,
+       currency,
        confidence_level,
        access_type,
        wheelchair,
        changing_table,
        unisex,
        open_24h,
-       opening_hours_normalized
+       opening_hours_normalized,
+       payment_methods
      FROM toilets
      WHERE canonical_status = 'active'
        AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
@@ -63,6 +69,8 @@ export async function findNearbyToilets(
     lng: Number(row.lng),
     distanceMeters: Number(row.distance_meters),
     priceState: row.price_state,
+    priceAmountMinor: row.price_amount_minor,
+    currency: row.currency,
     confidenceLevel: row.confidence_level,
     accessType: row.access_type,
     wheelchair: row.wheelchair,
@@ -70,5 +78,6 @@ export async function findNearbyToilets(
     unisex: row.unisex,
     open24h: row.open_24h,
     openingHoursNormalized: row.opening_hours_normalized,
+    paymentMethods: row.payment_methods,
   }));
 }

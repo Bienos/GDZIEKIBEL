@@ -12,9 +12,12 @@ function toilet(id: string): NearbyToiletResult {
     approxWalkingMinutes: 2,
     openingStatus: 'UNKNOWN',
     priceState: 'unknown',
+    priceAmountMinor: null,
+    currency: null,
     confidenceLevel: 'low',
     accessType: 'unknown',
     features: { wheelchair: 'unknown', changingTable: 'unknown', unisex: 'unknown' },
+    paymentMethods: { cash: 'unknown', cards: 'unknown', coins: 'unknown' },
   };
 }
 

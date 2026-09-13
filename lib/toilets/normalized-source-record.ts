@@ -71,8 +71,19 @@ export const normalizedSourceRecordSchema = z.strictObject({
 
   priceState: z.enum(PRICE_STATES),
   chargeRaw: z.string().min(1).nullable(),
+  /** The bounded-grammar parse of `chargeRaw` (TASK-014), or `null` when
+   * there was nothing to parse or parsing failed. */
+  priceAmountMinor: z.number().int().min(0).nullable(),
+  currency: z.string().length(3).nullable(),
   /** Source tags as given, for example `{ "payment:cards": "yes" }`. */
   paymentMethodsRaw: z.record(z.string(), z.string()).nullable(),
+  /** The normalised cash/cards/coins facts (TASK-014); never null itself,
+   * an unrecorded flag is `'unknown'`. */
+  paymentMethods: z.strictObject({
+    cash: featureState,
+    cards: featureState,
+    coins: featureState,
+  }),
 
   accessType: z.enum(ACCESS_TYPES),
   /** The source's own access value, kept so an `unknown` stays explainable. */

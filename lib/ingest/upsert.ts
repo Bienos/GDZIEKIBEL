@@ -36,6 +36,8 @@ function canonicalValues(record: NormalizedSourceRecord) {
     record.position.lat,
     record.accessType,
     record.priceState,
+    record.priceAmountMinor,
+    record.currency,
     record.wheelchair,
     record.changingTable,
     record.male,
@@ -47,19 +49,19 @@ function canonicalValues(record: NormalizedSourceRecord) {
     record.level,
     record.indoor,
     record.sourceVerifiedAt,
-    record.paymentMethodsRaw === null ? null : JSON.stringify(record.paymentMethodsRaw),
+    JSON.stringify(record.paymentMethods),
   ];
 }
 
 const INSERT_TOILET = `
   INSERT INTO toilets (
-    name, geom, access_type, price_state,
+    name, geom, access_type, price_state, price_amount_minor, currency,
     wheelchair, changing_table, male, female, unisex,
     opening_hours_raw, open_24h, opening_hours_normalized, level, indoor, verified_at, payment_methods
   ) VALUES (
-    $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5,
-    $6, $7, $8, $9, $10,
-    $11, $12, $13::jsonb, $14, $15, $16, $17::jsonb
+    $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7,
+    $8, $9, $10, $11, $12,
+    $13, $14, $15::jsonb, $16, $17, $18, $19::jsonb
   )
   RETURNING id`;
 
@@ -67,12 +69,12 @@ const UPDATE_TOILET = `
   UPDATE toilets SET
     name = $1,
     geom = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
-    access_type = $4, price_state = $5,
-    wheelchair = $6, changing_table = $7, male = $8, female = $9, unisex = $10,
-    opening_hours_raw = $11, open_24h = $12, opening_hours_normalized = $13::jsonb,
-    level = $14, indoor = $15, verified_at = $16,
-    payment_methods = $17::jsonb
-  WHERE id = $18`;
+    access_type = $4, price_state = $5, price_amount_minor = $6, currency = $7,
+    wheelchair = $8, changing_table = $9, male = $10, female = $11, unisex = $12,
+    opening_hours_raw = $13, open_24h = $14, opening_hours_normalized = $15::jsonb,
+    level = $16, indoor = $17, verified_at = $18,
+    payment_methods = $19::jsonb
+  WHERE id = $20`;
 
 /**
  * Applies one run's records inside the caller's transaction.

@@ -65,6 +65,26 @@ export function priceLabel(priceState: PriceState, dictionary: Dictionary): stri
 }
 
 /**
+ * Shows the parsed amount (`2 PLN`) when `TASK-014`'s `parseCharge` found
+ * one; otherwise falls back to `priceLabel`'s generic badge. `PRODUCT.md`
+ * section 19 names a literal amount as a "core fact" that "stays literal" —
+ * never a guessed one when the charge string did not parse.
+ */
+export function priceAmountLabel(
+  priceState: PriceState,
+  priceAmountMinor: number | null,
+  currency: string | null,
+  dictionary: Dictionary,
+): string {
+  if (priceState === 'paid' && priceAmountMinor !== null && currency !== null) {
+    const amount = priceAmountMinor / 100;
+    const formatted = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+    return `${formatted} ${currency}`;
+  }
+  return priceLabel(priceState, dictionary);
+}
+
+/**
  * `240 M · ~3 MIN PIESZO` (DESIGN.md 9.4's own example format). Distance is
  * rounded for display; `approxWalkingMinutes` is already an integer
  * (`lib/toilets/walking-time.ts`).

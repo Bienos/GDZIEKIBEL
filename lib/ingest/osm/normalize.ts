@@ -1,9 +1,10 @@
 import { deriveOpeningHours } from '@/lib/opening-hours/parse-opening-hours';
+import { parseCharge } from '@/lib/toilets/parse-charge';
 import {
   parseNormalizedSourceRecord,
   type NormalizedSourceRecord,
 } from '@/lib/toilets/normalized-source-record';
-import type { AccessType, FeatureState, PriceState } from '@/lib/toilets/types';
+import type { AccessType, FeatureState, PaymentMethods, PriceState } from '@/lib/toilets/types';
 import type { ValidElement } from './validate';
 
 /**
@@ -69,9 +70,32 @@ function isoDate(value: string | undefined): string | null {
   return value !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
+/** Adapts `parseCharge`'s `{ amountMinor, currency }` to the contract's
+ * `priceAmountMinor`/`currency` field names. */
+function charge(chargeRaw: string | null): {
+  priceAmountMinor: number | null;
+  currency: string | null;
+} {
+  const parsed = parseCharge(chargeRaw);
+  return { priceAmountMinor: parsed?.amountMinor ?? null, currency: parsed?.currency ?? null };
+}
+
 function paymentTags(tags: Record<string, string>): Record<string, string> | null {
   const entries = Object.entries(tags).filter(([key]) => key.startsWith('payment:'));
   return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
+ * The three payment facts this task normalises (ADR 0010), not the full
+ * `payment:*` namespace. Reuses `featureState`, the same mapping already
+ * applied to wheelchair/changing-table/unisex.
+ */
+function paymentMethods(tags: Record<string, string>): PaymentMethods {
+  return {
+    cash: featureState(tags['payment:cash']),
+    cards: featureState(tags['payment:cards']),
+    coins: featureState(tags['payment:coins']),
+  };
 }
 
 function indoor(value: string | undefined): boolean | null {
@@ -105,7 +129,9 @@ export function normalizeElement(element: ValidElement): NormalizedSourceRecord 
 
     priceState: priceState(tags.fee),
     chargeRaw: nonEmpty(tags.charge),
+    ...charge(nonEmpty(tags.charge)),
     paymentMethodsRaw: paymentTags(tags),
+    paymentMethods: paymentMethods(tags),
 
     accessType: accessType(tags.access),
     accessRaw: nonEmpty(tags.access),

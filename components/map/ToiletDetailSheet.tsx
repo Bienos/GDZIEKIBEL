@@ -9,7 +9,7 @@ import {
   distanceLine,
   openingStatusLabel,
   openingStatusVariant,
-  priceLabel,
+  priceAmountLabel,
 } from '@/lib/toilets/preview-copy';
 import styles from './MapShell.module.css';
 
@@ -23,10 +23,11 @@ const STATUS_BADGE_CLASS: Record<ReturnType<typeof openingStatusVariant>, string
 /**
  * The toilet detail sheet (TASK-011, DESIGN.md 9.4). Shows every value
  * FR-05 lists that the nearby API actually returns today: name, distance +
- * ETA, opening status + price, a navigation CTA (TASK-012), accessibility
- * features, and a data-confidence hint. No hours, no report control — see
- * `tasks/011-toilet-detail-sheet.md` for why each is deliberately absent
- * rather than an oversight.
+ * ETA, opening status + price (an amount when TASK-014's charge parser
+ * found one), a navigation CTA (TASK-012), accessibility features, the
+ * three payment-method facts TASK-014 normalises, and a data-confidence
+ * hint. No hours, no report control — see `tasks/011-toilet-detail-sheet.md`
+ * for why each is deliberately absent rather than an oversight.
  */
 export function ToiletDetailSheet({
   toilet,
@@ -62,7 +63,12 @@ export function ToiletDetailSheet({
             {openingStatusLabel(toilet.openingStatus, dictionary)}
           </span>
           <span className={styles.previewBadgePrice}>
-            {priceLabel(toilet.priceState, dictionary)}
+            {priceAmountLabel(
+              toilet.priceState,
+              toilet.priceAmountMinor,
+              toilet.currency,
+              dictionary,
+            )}
           </span>
         </div>
         <a
@@ -91,6 +97,24 @@ export function ToiletDetailSheet({
             <dt className={styles.detailFeatureLabel}>{dictionary.detailFeatureUnisex}</dt>
             <dd className={styles.detailFeatureValue}>
               {featureStateLabel(toilet.features.unisex, dictionary)}
+            </dd>
+          </div>
+          <div className={styles.detailFeatureRow}>
+            <dt className={styles.detailFeatureLabel}>{dictionary.detailPaymentCash}</dt>
+            <dd className={styles.detailFeatureValue}>
+              {featureStateLabel(toilet.paymentMethods.cash, dictionary)}
+            </dd>
+          </div>
+          <div className={styles.detailFeatureRow}>
+            <dt className={styles.detailFeatureLabel}>{dictionary.detailPaymentCards}</dt>
+            <dd className={styles.detailFeatureValue}>
+              {featureStateLabel(toilet.paymentMethods.cards, dictionary)}
+            </dd>
+          </div>
+          <div className={styles.detailFeatureRow}>
+            <dt className={styles.detailFeatureLabel}>{dictionary.detailPaymentCoins}</dt>
+            <dd className={styles.detailFeatureValue}>
+              {featureStateLabel(toilet.paymentMethods.coins, dictionary)}
             </dd>
           </div>
         </dl>

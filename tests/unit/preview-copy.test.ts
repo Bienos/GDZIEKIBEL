@@ -4,6 +4,7 @@ import {
   distanceLine,
   openingStatusLabel,
   openingStatusVariant,
+  priceAmountLabel,
   priceLabel,
 } from '@/lib/toilets/preview-copy';
 
@@ -49,6 +50,25 @@ describe('priceLabel', () => {
   it('never collapses unknown into free or paid', () => {
     expect(priceLabel('unknown', en)).not.toBe(priceLabel('free', en));
     expect(priceLabel('unknown', en)).not.toBe(priceLabel('paid', en));
+  });
+});
+
+describe('priceAmountLabel', () => {
+  it('shows a whole-number amount without decimals', () => {
+    expect(priceAmountLabel('paid', 200, 'PLN', pl)).toBe('2 PLN');
+  });
+
+  it('shows a fractional amount with two decimal places', () => {
+    expect(priceAmountLabel('paid', 450, 'PLN', pl)).toBe('4.50 PLN');
+  });
+
+  it('falls back to the generic paid badge when the amount did not parse', () => {
+    expect(priceAmountLabel('paid', null, null, pl)).toBe('PŁATNY');
+  });
+
+  it('ignores an amount if priceState is not paid, never showing a stale figure', () => {
+    expect(priceAmountLabel('free', 200, 'PLN', pl)).toBe('ZA DARMO');
+    expect(priceAmountLabel('unknown', 200, 'PLN', pl)).toBe('CENA NIEZNANA');
   });
 });
 

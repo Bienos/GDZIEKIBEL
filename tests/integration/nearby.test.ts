@@ -138,4 +138,38 @@ describe.skipIf(!hasDatabaseUrl)('findNearbyToilets', () => {
       rules: [{ days: [0, 1, 2, 3, 4], closed: false, ranges: [{ start: 480, end: 960 }] }],
     });
   });
+
+  it('reports price_amount_minor, currency, and payment_methods (TASK-014), round-tripped through jsonb', async () => {
+    await getPool().query(
+      `INSERT INTO toilets (name, geom, price_state, price_amount_minor, currency, payment_methods)
+       VALUES ($3, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 'paid', 450, 'PLN', $4::jsonb)`,
+      [
+        CENTRE.lng,
+        CENTRE.lat + 0.001,
+        `${PREFIX}priced`,
+        JSON.stringify({ cash: 'yes', cards: 'no', coins: 'unknown' }),
+      ],
+    );
+
+    const rows = ownRows(await findNearbyToilets(getPool(), { ...CENTRE, radiusMeters: 1000 }));
+    const priced = rows.find((item) => item.name === `${PREFIX}priced`);
+
+    expect(priced?.priceAmountMinor).toBe(450);
+    expect(priced?.currency).toBe('PLN');
+    expect(priced?.paymentMethods).toEqual({ cash: 'yes', cards: 'no', coins: 'unknown' });
+  });
+
+  it('reports paymentMethods as null (not an all-unknown object) for a pre-TASK-014 row with none recorded', async () => {
+    await insertToilet(`${PREFIX}no-payment-data`, 0.001);
+
+    const rows = ownRows(await findNearbyToilets(getPool(), { ...CENTRE, radiusMeters: 1000 }));
+    const row = rows.find((item) => item.name === `${PREFIX}no-payment-data`);
+
+    // The query itself reports the real column value; toNearbyResult (unit-
+    // tested separately) is what turns this null into the all-unknown
+    // object at the API boundary.
+    expect(row?.paymentMethods).toBeNull();
+    expect(row?.priceAmountMinor).toBeNull();
+    expect(row?.currency).toBeNull();
+  });
 });

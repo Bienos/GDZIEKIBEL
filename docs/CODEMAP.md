@@ -54,7 +54,8 @@ components/
 lib/
   env/server.ts       the only validated reader of server environment variables
   i18n/               supported locales and the copy dictionaries
-  toilets/types.ts    enumerated values of the toilet model, mirroring the SQL types
+  toilets/types.ts    enumerated values of the toilet model, mirroring the SQL types;
+                      also PaymentMethods (TASK-014), the cash/cards/coins shape
   toilets/normalized-source-record.ts
                       Zod schema an ingestion adapter must emit (contract section 6)
   geo/warsaw.ts       coarse Warsaw bounding box, a first filter only
@@ -74,7 +75,9 @@ lib/
                       shapes one DB row into the nearby-API response item;
                       enum values pass through unchanged, never booleans;
                       openingStatus is now computed by
-                      computeOpeningStatus, given an explicit `now` (TASK-013)
+                      computeOpeningStatus, given an explicit `now` (TASK-013);
+                      paymentMethods is never null in the response — a null
+                      row value becomes all-unknown (TASK-014)
   toilets/fetch-nearby.ts
                       client-side call to the nearby API; never throws
   toilets/marker-diff.ts
@@ -93,8 +96,13 @@ lib/
                       maps priceState/openingStatus to dictionary copy and a
                       status-colour variant, and formats the distance/ETA
                       line, for the nearest-toilet preview (TASK-010, status
-                      variants added TASK-013); pure, no React/DOM; reused
-                      by the detail sheet
+                      variants added TASK-013); priceAmountLabel (TASK-014)
+                      shows a parsed charge amount when one exists; pure, no
+                      React/DOM; reused by the detail sheet
+  toilets/parse-charge.ts
+                      parses a bounded `<amount> <currency>` grammar
+                      (TASK-014, ADR 0010) into { amountMinor, currency };
+                      pure, source-agnostic, reused by any adapter
   opening-hours/types.ts, warsaw-time.ts, parse-opening-hours.ts, compute-status.ts
                       TASK-013: a bounded OSM opening_hours grammar parser,
                       an Intl-based Warsaw weekday/time helper, and status
@@ -110,13 +118,16 @@ lib/
                       session can test real app-opening behaviour
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
-                      since TASK-013
+                      since TASK-013, price_amount_minor/currency and the
+                      normalised payment_methods since TASK-014
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
-                      (normalize.ts derives opening-hours fields since TASK-013)
+                      (normalize.ts derives opening-hours fields since
+                      TASK-013, and charge/payment-method fields since TASK-014)
 db/
   queries/nearby.ts   the nearby-toilets PostGIS query (TASK-007); active-only,
                       distance order, server-capped result count; selects
-                      open_24h/opening_hours_normalized since TASK-013
+                      open_24h/opening_hours_normalized since TASK-013 and
+                      price_amount_minor/currency/payment_methods since TASK-014
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -184,6 +195,10 @@ Ownership:
   (24/7 and simple weekly rules, not public holidays or date ranges), and
   qualifying a real day/time match into `LIKELY_OPEN`/`LIKELY_CLOSED` unless
   `confidence_level` is `'high'`.
+- `docs/adr/0010-price-and-payment-normalisation.md` — a bounded
+  `<amount> <currency>` grammar for `charge` (PLN/EUR/USD only), and three
+  payment-method flags (cash/cards/coins) normalised from OSM's `payment:*`
+  tags, not the full namespace.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -214,12 +229,16 @@ holidays or date ranges) parsed at ingestion time, evaluated against the
 current Warsaw-local moment at request time, and qualified into
 `LIKELY_OPEN`/`LIKELY_CLOSED` unless `confidence_level` is `'high'` — which
 nothing produces yet, so every status computed today is qualified, correct
-given today's single, uncorroborated source. The report control still does
-not exist on the detail sheet (`TASK-020`'s job). No filters or accessible
-list view exists yet. No deduplication, real confidence scoring, reporting,
-analytics or error-tracking code exists. Ingestion exists but has never run
-against the live source — so the opening-hours parser has never seen a
-real OSM string, only constructed fixtures matching the documented grammar
-— and the map — tiles, the location dot, and the toilet markers — has
-never been visually observed rendering for real from this session. Those
-areas are owned by later tasks.
+given today's single, uncorroborated source. The price badge shows a real
+parsed amount (`2 PLN`) when a toilet's `charge` tag fits a bounded
+`<amount> <currency>` grammar (TASK-014, ADR 0010, PLN/EUR/USD only), and
+the detail sheet shows three normalised payment facts — cash, card, coin
+accepted — none fabricated. The report control still does not exist on
+the detail sheet (`TASK-020`'s job). No filters or accessible list view
+exists yet. No deduplication, real confidence scoring, reporting,
+analytics or error-tracking code exists. Ingestion exists but has never
+run against the live source — so the opening-hours and charge parsers
+have never seen a real OSM string, only constructed fixtures matching
+their documented grammars — and the map — tiles, the location dot, and
+the toilet markers — has never been visually observed rendering for real
+from this session. Those areas are owned by later tasks.

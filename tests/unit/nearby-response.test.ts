@@ -10,6 +10,8 @@ const baseRow: NearbyToiletRow = {
   lng: 21.0122,
   distanceMeters: 240,
   priceState: 'unknown',
+  priceAmountMinor: null,
+  currency: null,
   confidenceLevel: 'low',
   accessType: 'unknown',
   wheelchair: 'unknown',
@@ -17,6 +19,7 @@ const baseRow: NearbyToiletRow = {
   unisex: 'unknown',
   open24h: null,
   openingHoursNormalized: null,
+  paymentMethods: null,
 };
 
 describe('toNearbyResult', () => {
@@ -67,5 +70,27 @@ describe('toNearbyResult', () => {
     expect(result).not.toHaveProperty('rawPayload');
     expect(result).not.toHaveProperty('sourceName');
     expect(result).not.toHaveProperty('sourceRecordId');
+  });
+
+  it('carries the parsed charge amount and currency through unchanged', () => {
+    const result = toNearbyResult({ ...baseRow, priceAmountMinor: 200, currency: 'PLN' }, NOW);
+
+    expect(result.priceAmountMinor).toBe(200);
+    expect(result.currency).toBe('PLN');
+  });
+
+  it('reports paymentMethods as all-unknown, never null, for a row with none recorded', () => {
+    const result = toNearbyResult(baseRow, NOW);
+
+    expect(result.paymentMethods).toEqual({ cash: 'unknown', cards: 'unknown', coins: 'unknown' });
+  });
+
+  it('carries a row with recorded payment methods through unchanged', () => {
+    const result = toNearbyResult(
+      { ...baseRow, paymentMethods: { cash: 'yes', cards: 'no', coins: 'unknown' } },
+      NOW,
+    );
+
+    expect(result.paymentMethods).toEqual({ cash: 'yes', cards: 'no', coins: 'unknown' });
   });
 });

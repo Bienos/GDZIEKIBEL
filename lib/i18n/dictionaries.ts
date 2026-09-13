@@ -82,6 +82,11 @@ export interface Dictionary {
   detailFeatureNo: string;
   detailFeatureLimited: string;
   detailFeatureUnknown: string;
+  /** The three payment facts TASK-014 normalises (ADR 0010), sharing the
+   * same yes/no/limited/unknown value labels above. */
+  detailPaymentCash: string;
+  detailPaymentCards: string;
+  detailPaymentCoins: string;
   detailConfidenceHigh: string;
   detailConfidenceMedium: string;
   detailConfidenceLow: string;
@@ -136,6 +141,9 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailFeatureNo: 'NIE',
     detailFeatureLimited: 'OGRANICZONE',
     detailFeatureUnknown: 'NIEZNANE',
+    detailPaymentCash: 'GOTÓWKA',
+    detailPaymentCards: 'KARTA',
+    detailPaymentCoins: 'MONETY',
     detailConfidenceHigh: 'PEWNOŚĆ DANYCH: WYSOKA',
     detailConfidenceMedium: 'PEWNOŚĆ DANYCH: ŚREDNIA',
     detailConfidenceLow: 'PEWNOŚĆ DANYCH: NISKA',
@@ -182,6 +190,9 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     detailFeatureNo: 'NO',
     detailFeatureLimited: 'LIMITED',
     detailFeatureUnknown: 'UNKNOWN',
+    detailPaymentCash: 'CASH',
+    detailPaymentCards: 'CARD',
+    detailPaymentCoins: 'COINS',
     detailConfidenceHigh: 'DATA CONFIDENCE: HIGH',
     detailConfidenceMedium: 'DATA CONFIDENCE: MEDIUM',
     detailConfidenceLow: 'DATA CONFIDENCE: LOW',

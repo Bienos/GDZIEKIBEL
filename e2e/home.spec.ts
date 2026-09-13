@@ -236,9 +236,12 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
             approxWalkingMinutes: 4,
             openingStatus: 'UNKNOWN',
             priceState: 'paid',
+            priceAmountMinor: 450,
+            currency: 'PLN',
             confidenceLevel: 'low',
             accessType: 'public_unconditional',
             features: { wheelchair: 'yes', changingTable: 'limited', unisex: 'unknown' },
+            paymentMethods: { cash: 'no', cards: 'yes', coins: 'unknown' },
           },
         ],
       }),
@@ -262,9 +265,11 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText('240 M · ~4 MIN PIESZO')).toBeVisible();
   await expect(sheet.getByText('STATUS NIEPEWNY')).toBeVisible();
-  await expect(sheet.getByText('PŁATNY')).toBeVisible();
+  await expect(sheet.getByText('4.50 PLN')).toBeVisible();
+  await expect(sheet.getByText('GOTÓWKA')).toBeVisible();
+  await expect(sheet.getByText('KARTA')).toBeVisible();
+  await expect(sheet.getByText('MONETY')).toBeVisible();
   await expect(sheet.getByText('DOSTĘP DLA WÓZKÓW')).toBeVisible();
-  await expect(sheet.getByText('TAK')).toBeVisible();
   await expect(sheet.getByText('PRZEWIJAK')).toBeVisible();
   await expect(sheet.getByText('OGRANICZONE')).toBeVisible();
   await expect(sheet.getByText('TOALETA UNISEX')).toBeVisible();

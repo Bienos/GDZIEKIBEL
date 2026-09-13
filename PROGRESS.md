@@ -674,6 +674,61 @@ Not created, by design: parsing for public holidays or date/season ranges,
 populating `seasonal`, a new `ingestion_runs` warnings column, and any
 change to ranking, filters, or the list view.
 
+### TASK-014 — Price/free state
+
+Complete on 2026-09-13. Specified in `tasks/014-price-free-state.md`;
+decision recorded in `docs/adr/0010-price-and-payment-normalisation.md`.
+
+**Scoped by checking what already existed first**, the same discipline
+`TASK-013` used: `price_state` was already normalised (`TASK-003`/
+`TASK-004`) and rendered consistently (`TASK-010`/`TASK-011`) before this
+task started. Two real gaps remained, both already named in existing
+schema comments: `price_amount_minor`/`currency` (present since `TASK-003`,
+never written), and `payment_methods` (`docs/adr/0004-schema-conventions.md`:
+"normalised by TASK-014" — it held the *raw* `payment:*` tag dump instead,
+never an actual normalisation).
+
+Created: `lib/toilets/parse-charge.ts` parses a bounded `<amount>
+<currency>` grammar (one amount, one of `PLN`/`zł`/`zl`/`EUR`/`USD`;
+anything else — a range, missing currency, free text — is `null`, never a
+guess) into `{ amountMinor, currency }`. `lib/ingest/osm/normalize.ts`
+gained a `paymentMethods(tags)` mapping function (the same pattern as
+`accessType()`/`priceState()`) producing three real facts — `cash`,
+`cards`, `coins`, each a `FeatureState` — from OSM's `payment:*` tags;
+`docs/research/2026-09-13-warsaw-toilet-sources.md` section 3.10's cited
+traveller problem (needing coins, not knowing if cash/card works) is
+exactly what these three facts answer, not the full `payment:*` namespace.
+
+**Wired through the whole pipeline**, the same shape as `TASK-013`:
+`normalized-source-record.ts` requires `priceAmountMinor`/`currency`/
+`paymentMethods`; `upsert.ts` writes `price_amount_minor`/`currency` (new)
+and the *normalised* `payment_methods` (replacing the raw dump it wrote
+before); `db/queries/nearby.ts` selects all three; the nearby API returns
+them, with `paymentMethods` never `null` at the response boundary — a row
+with none recorded (or a pre-`TASK-014` row) becomes
+`{cash:'unknown',cards:'unknown',coins:'unknown'}`, not an absent field.
+The preview and detail sheet show the parsed amount (`lib/toilets/preview-copy.ts`'s
+new `priceAmountLabel`, falling back to the existing generic `PŁATNY`/`PAID`
+badge when nothing parsed) and the detail sheet gained three more
+accessibility-style rows for the payment facts, reusing `featureStateLabel`
+unchanged.
+
+Verified: lint, format, typecheck, 180 unit tests (17 new — the charge
+parser, `priceAmountLabel`, and extended OSM-normalize/nearby-response
+assertions), 30 integration tests (3 new, proving `price_amount_minor`/
+`currency`/`payment_methods` round-trip through a real PostGIS database via
+both `findNearbyToilets` and the full `upsertSourceRecords` write path, and
+that a pre-`TASK-014` row with no payment data reports the DB column as
+real `null` — the all-unknown fallback is `toNearbyResult`'s job, proven
+separately by unit test), the production build, and 10 Playwright tests
+(the existing detail-sheet test extended with a real `4.50 PLN` amount and
+all three payment-method rows against a running production build, not a
+new test file).
+
+Not created, by design: currencies beyond PLN/EUR/USD, free-text charge
+parsing (a range, "donation"), payment methods beyond cash/cards/coins,
+and any change to `price_state` itself, ranking, or opening-status work.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -709,12 +764,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 163 tests in 24 files                          |
+| `pnpm test:unit`          | pass, 180 tests in 25 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 27 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 10 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA, real opening-status colour) |
+| `pnpm test:integration`   | pass, 30 tests in 4 files                            |
+| `pnpm test:e2e`           | pass, 10 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour) |
 
 Also observed:
 
@@ -806,14 +861,10 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-014 — Price/free state` per `PLAN.md`: "free/paid/unknown is
-   normalised and rendered consistently." Needs a `tasks/014-*.md` file,
-   whose first job is honestly scoping what remains: `price_state` has
-   been normalised since `TASK-003`/`TASK-004` and rendered consistently
-   since `TASK-010`/`TASK-011` (`lib/toilets/preview-copy.ts`'s
-   `priceLabel`). What plausibly remains — `price_amount_minor`/`currency`
-   (present in the schema, never populated) and `payment_methods`
-   normalisation (`upsert.ts`'s own comment: "Normalised later by
-   TASK-014") — needs checking against real OSM `fee`/`charge`/`payment:*`
-   tag data before deciding real scope, the same way `TASK-013` first
-   established what was and was not already done.
+2. `TASK-015 — List view` per `PLAN.md`: "same result set can be used
+   without relying on map interaction." Needs a `tasks/015-*.md` file.
+   `DESIGN.md` section 9.5 and `PRODUCT.md`/`DESIGN.md` section 14's
+   accessibility requirement ("map has equivalent list representation")
+   govern it — this is the accessible fallback `TASK-008`'s own notes
+   already flagged as deferred to this task, and the last task before
+   Milestone 2's filters (`TASK-016`) need something to filter.

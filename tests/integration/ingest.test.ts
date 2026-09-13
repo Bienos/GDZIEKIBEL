@@ -250,6 +250,41 @@ describe.skipIf(!hasDatabaseUrl)('ingestion upsert', () => {
     });
   });
 
+  it('writes price_amount_minor, currency, and normalised payment_methods (TASK-014) to the canonical toilet', async () => {
+    await withTransaction((client) =>
+      upsertSourceRecords(
+        client,
+        SOURCE,
+        [
+          record({
+            sourceRecordId: 'node/1',
+            priceState: 'paid',
+            chargeRaw: '4.50 PLN',
+            priceAmountMinor: 450,
+            currency: 'PLN',
+            paymentMethods: { cash: 'no', cards: 'yes', coins: 'unknown' },
+          }),
+        ],
+        new Date(),
+      ),
+    );
+
+    const toilet = await getPool().query<{
+      price_amount_minor: number | null;
+      currency: string | null;
+      payment_methods: unknown;
+    }>(
+      `SELECT t.price_amount_minor, t.currency, t.payment_methods FROM toilets t
+         JOIN toilet_source_records s ON s.toilet_id = t.id
+        WHERE s.source_name = $1`,
+      [SOURCE],
+    );
+
+    expect(toilet.rows[0]?.price_amount_minor).toBe(450);
+    expect(toilet.rows[0]?.currency).toBe('PLN');
+    expect(toilet.rows[0]?.payment_methods).toEqual({ cash: 'no', cards: 'yes', coins: 'unknown' });
+  });
+
   it('stores the normalised payload and never an OSM username', async () => {
     await withTransaction((client) =>
       upsertSourceRecords(client, SOURCE, [record({ sourceRecordId: 'node/1' })], new Date()),

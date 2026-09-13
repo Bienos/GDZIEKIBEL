@@ -96,6 +96,7 @@ describe('normalizeElement', () => {
     expect(record.indoor).toBe(true);
     expect(record.sourceVerifiedAt).toBe('2026-07-15');
     expect(record.paymentMethodsRaw).toEqual({ 'payment:cards': 'yes' });
+    expect(record.paymentMethods).toEqual({ cash: 'unknown', cards: 'yes', coins: 'unknown' });
     expect(record.notesRaw).toContain('Marszalkowskiej');
   });
 
@@ -115,6 +116,9 @@ describe('normalizeElement', () => {
     expect(record.open24h).toBeNull();
     expect(record.openingHoursNormalized).toBeNull();
     expect(record.sourceVerifiedAt).toBeNull();
+    expect(record.priceAmountMinor).toBeNull();
+    expect(record.currency).toBeNull();
+    expect(record.paymentMethods).toEqual({ cash: 'unknown', cards: 'unknown', coins: 'unknown' });
   });
 
   it('distinguishes fee=no from an absent fee tag', () => {
@@ -122,6 +126,13 @@ describe('normalizeElement', () => {
     expect(normalizeElement(validated(1)).priceState).toBe('unknown');
     expect(normalizeElement(validated(2)).priceState).toBe('paid');
     expect(normalizeElement(validated(2)).chargeRaw).toBe('4.50 PLN');
+  });
+
+  it('parses a well-formed charge tag into an amount and currency', () => {
+    const record = normalizeElement(validated(2));
+
+    expect(record.priceAmountMinor).toBe(450);
+    expect(record.currency).toBe('PLN');
   });
 
   it('maps access=customers to customers_only and keeps the raw value', () => {

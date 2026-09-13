@@ -4,7 +4,7 @@ import {
   distanceLine,
   openingStatusLabel,
   openingStatusVariant,
-  priceLabel,
+  priceAmountLabel,
 } from '@/lib/toilets/preview-copy';
 import styles from './MapShell.module.css';
 
@@ -53,7 +53,12 @@ export function NearestToiletPreview({
           {openingStatusLabel(toilet.openingStatus, dictionary)}
         </span>
         <span className={styles.previewBadgePrice}>
-          {priceLabel(toilet.priceState, dictionary)}
+          {priceAmountLabel(
+            toilet.priceState,
+            toilet.priceAmountMinor,
+            toilet.currency,
+            dictionary,
+          )}
         </span>
       </div>
     </button>

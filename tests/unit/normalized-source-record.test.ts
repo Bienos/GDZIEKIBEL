@@ -24,7 +24,10 @@ const bare: NormalizedSourceRecord = {
   openingHoursNormalized: null,
   priceState: 'unknown',
   chargeRaw: null,
+  priceAmountMinor: null,
+  currency: null,
   paymentMethodsRaw: null,
+  paymentMethods: { cash: 'unknown', cards: 'unknown', coins: 'unknown' },
   accessType: 'unknown',
   accessRaw: null,
   wheelchair: 'unknown',
@@ -54,7 +57,10 @@ describe('normalizedSourceRecordSchema', () => {
           { days: [0, 1, 2, 3, 4, 5, 6], closed: false, ranges: [{ start: 360, end: 1320 }] },
         ],
       },
-      priceState: 'free',
+      priceState: 'paid',
+      chargeRaw: '4.50 PLN',
+      priceAmountMinor: 450,
+      currency: 'PLN',
       accessType: 'public_unconditional',
       accessRaw: 'yes',
       wheelchair: 'yes',
@@ -64,6 +70,7 @@ describe('normalizedSourceRecordSchema', () => {
       indoor: true,
       sourceVerifiedAt: '2026-07-15',
       paymentMethodsRaw: { 'payment:cards': 'yes' },
+      paymentMethods: { cash: 'no', cards: 'yes', coins: 'unknown' },
     };
 
     expect(parseNormalizedSourceRecord(full)).toEqual(full);
