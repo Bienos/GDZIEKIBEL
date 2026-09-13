@@ -427,6 +427,30 @@
   outline-offset: 2px;
 }
 
+/* The filters toggle (TASK-016), stacked directly below the map/list
+   toggle, same corner, same visual language. */
+.filtersToggle {
+  position: absolute;
+  top: calc(var(--space-3) + 44px + var(--space-2));
+  left: var(--space-3);
+  min-height: 44px;
+  padding-inline: var(--space-4);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: var(--type-small-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.filtersToggle:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
 /* The accessible list view (TASK-015), filling the same area the map or
    its fallback would. */
 .list {
@@ -473,4 +497,38 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+/* The filter sheet's sections (TASK-016, DESIGN.md 9.6). Reuses .sheet/
+   .scrim/.sheetPrimary/.sheetSecondary/.detailClose/.sheetHeadline from
+   the location and detail sheets — same visual language, no new modal
+   pattern. */
+.filterSection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.filterSectionTitle {
+  padding: 0;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-leading);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.filterOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: var(--type-body-size);
+  cursor: pointer;
 }

@@ -11,10 +11,12 @@ import {
   WARSAW_DEFAULT_ZOOM,
   WARSAW_MAX_BOUNDS,
 } from '@/lib/map/warsaw-view';
+import type { NearbyFilters } from '@/lib/toilets/filter-nearby';
 import { fetchNearbyToilets } from '@/lib/toilets/fetch-nearby';
 import { diffMarkers } from '@/lib/toilets/marker-diff';
 import { createToiletMarkerElement, setMarkerSelected } from '@/lib/toilets/marker-element';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
+import { FiltersSheet } from './FiltersSheet';
 import { NearestToiletPreview } from './NearestToiletPreview';
 import { ToiletDetailSheet } from './ToiletDetailSheet';
 import { ToiletListView } from './ToiletListView';
@@ -25,8 +27,10 @@ import styles from './MapShell.module.css';
  * nearby toilet markers with click-to-select (TASK-008), the collapsed
  * nearest-toilet preview (TASK-010, reading the API's now-ranked order from
  * TASK-009), the toilet detail sheet (TASK-011, opened by tapping either of
- * those or a list row), and the accessible list view (TASK-015), a toggle
- * away from the map. No filters — that is a later task.
+ * those or a list row), the accessible list view (TASK-015, a toggle away
+ * from the map), and the core filters (TASK-016), which apply to markers,
+ * the list, and the preview alike since all three read the one `toilets`
+ * state the filtered fetch already produced.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -62,6 +66,9 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const [toilets, setToilets] = useState<NearbyToiletResult[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [activeFilters, setActiveFilters] = useState<NearbyFilters>({});
+  const [draftFilters, setDraftFilters] = useState<NearbyFilters>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const askHeadingRef = useRef<HTMLHeadingElement>(null);
   const deniedHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -129,23 +136,26 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   }, [locationFlow]);
 
   // Fetches nearby toilets on mount, centred on the default Warsaw view, and
-  // again whenever the user grants a real location. This is independent of
-  // whether the map itself has loaded: PRODUCT.md section 6.1 requires the
-  // manual-browse journey to be useful even without a grant, and an empty
-  // map with no toilets until location is shared would be a weak version of
-  // that. Rendering the results as markers is a separate effect below.
+  // again whenever the user grants a real location or changes the active
+  // filters (TASK-016). This is independent of whether the map itself has
+  // loaded: PRODUCT.md section 6.1 requires the manual-browse journey to be
+  // useful even without a grant, and an empty map with no toilets until
+  // location is shared would be a weak version of that. Rendering the
+  // results as markers is a separate effect below.
   useEffect(() => {
     let cancelled = false;
     const center = grantedCoords ?? { lat: WARSAW_CENTER_LAT, lon: WARSAW_CENTER_LNG };
 
-    fetchNearbyToilets({ lat: center.lat, lng: center.lon }).then((result) => {
-      if (!cancelled && result.ok) setToilets(result.results);
-    });
+    fetchNearbyToilets({ lat: center.lat, lng: center.lon, filters: activeFilters }).then(
+      (result) => {
+        if (!cancelled && result.ok) setToilets(result.results);
+      },
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [grantedCoords]);
+  }, [grantedCoords, activeFilters]);
 
   // Reconciles the fetched toilet list onto the map: adds a marker for a new
   // id, removes one for an id no longer present, leaves the rest alone. A
@@ -274,6 +284,19 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         {viewMode === 'map' ? dictionary.viewToggleToList : dictionary.viewToggleToMap}
       </button>
 
+      {(locationFlow === 'granted' || locationFlow === 'dismissed') && (
+        <button
+          type="button"
+          className={styles.filtersToggle}
+          onClick={() => {
+            setDraftFilters(activeFilters);
+            setFiltersOpen(true);
+          }}
+        >
+          {dictionary.filtersToggleLabel}
+        </button>
+      )}
+
       {(locationFlow === 'granted' || locationFlow === 'dismissed') &&
         (selectedToilet ? (
           <ToiletDetailSheet
@@ -291,6 +314,24 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
             />
           )
         ))}
+
+      {filtersOpen && (
+        <FiltersSheet
+          filters={draftFilters}
+          dictionary={dictionary}
+          onChange={setDraftFilters}
+          onApply={() => {
+            setActiveFilters(draftFilters);
+            setFiltersOpen(false);
+          }}
+          onClear={() => {
+            setDraftFilters({});
+            setActiveFilters({});
+            setFiltersOpen(false);
+          }}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
 
       {(locationFlow === 'asking' || locationFlow === 'requesting') && (
         <div className={styles.scrim}>

@@ -50,6 +50,9 @@ export interface NearbyToiletResult {
    * `docs/adr/0009-opening-hours-status.md`.
    */
   openingStatus: OpeningStatus;
+  /** The raw fact `TASK-016`'s open-24h filter reads; `openingStatus`
+   * above is the computed, moment-evaluated status, a different concept. */
+  open24h: boolean | null;
   priceState: PriceState;
   priceAmountMinor: number | null;
   currency: string | null;
@@ -92,6 +95,7 @@ export function toNearbyResult(row: NearbyToiletRow, now: Date): NearbyToiletRes
       row.confidenceLevel,
       now,
     ),
+    open24h: row.open24h,
     priceState: row.priceState,
     priceAmountMinor: row.priceAmountMinor,
     currency: row.currency,

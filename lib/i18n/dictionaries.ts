@@ -27,6 +27,22 @@ export interface Dictionary {
   viewToggleToMap: string;
   listAccessibleLabel: string;
   /**
+   * The filter sheet (TASK-016, DESIGN.md 9.6): the button that opens it,
+   * its own heading, the four section titles, the five toggle labels (two
+   * reuse existing feature-name copy), and its two CTAs. No live result
+   * count — see `tasks/016-core-filters.md` for why.
+   */
+  filtersToggleLabel: string;
+  filtersSectionStatus: string;
+  filtersSectionPrice: string;
+  filtersSectionAccessibility: string;
+  filtersSectionAmenities: string;
+  filterOpenNow: string;
+  filterFree: string;
+  filterOpen24h: string;
+  filtersApply: string;
+  filtersClear: string;
+  /**
    * Fallback state shown when the tile provider key is absent or the map
    * fails to initialise. `BRAND.md`'s "API/network error" copy, two layers:
    * a punchline and a literal explanation naming the map specifically.
@@ -117,6 +133,16 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     viewToggleToList: 'LISTA',
     viewToggleToMap: 'MAPA',
     listAccessibleLabel: 'Lista toalet w pobliżu',
+    filtersToggleLabel: 'FILTRY',
+    filtersSectionStatus: 'STATUS',
+    filtersSectionPrice: 'CENA',
+    filtersSectionAccessibility: 'DOSTĘPNOŚĆ',
+    filtersSectionAmenities: 'UDOGODNIENIA',
+    filterOpenNow: 'OTWARTE TERAZ',
+    filterFree: 'DARMOWE',
+    filterOpen24h: 'CZYNNE CAŁĄ DOBĘ',
+    filtersApply: 'POKAŻ WYNIKI',
+    filtersClear: 'WYCZYŚĆ',
     mapUnavailablePunchline: 'COŚ SIĘ WYSRAŁO.',
     mapUnavailableExplanation: 'Nie udało się załadować mapy.',
     mapUnavailableRetry: 'SPRÓBUJ JESZCZE RAZ',
@@ -169,6 +195,16 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     viewToggleToList: 'LIST',
     viewToggleToMap: 'MAP',
     listAccessibleLabel: 'List of nearby toilets',
+    filtersToggleLabel: 'FILTERS',
+    filtersSectionStatus: 'AVAILABILITY',
+    filtersSectionPrice: 'PRICE',
+    filtersSectionAccessibility: 'ACCESSIBILITY',
+    filtersSectionAmenities: 'AMENITIES',
+    filterOpenNow: 'OPEN NOW',
+    filterFree: 'FREE',
+    filterOpen24h: 'OPEN 24 HOURS',
+    filtersApply: 'SHOW RESULTS',
+    filtersClear: 'CLEAR',
     mapUnavailablePunchline: 'Something went wrong.',
     mapUnavailableExplanation: 'The map could not load.',
     mapUnavailableRetry: 'TRY AGAIN',

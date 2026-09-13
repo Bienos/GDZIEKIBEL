@@ -777,6 +777,71 @@ via the detail sheet), virtualisation or pagination (`MAX_NEARBY_RESULTS`
 is 30, small enough for a plain scrollable list), and any change to
 ranking, the nearby API, or the detail sheet's own content.
 
+### TASK-016 — Core filters
+
+Complete on 2026-09-13. Specified in `tasks/016-core-filters.md`; decision
+recorded in `docs/adr/0011-filter-semantics.md`.
+
+**The unknown-semantics decision.** `PRODUCT.md` section 6.3 phrases three
+of the five MVP filters (wheelchair, baby-changing, 24h) as "where data
+exists" — the product's own words already scope those to confirmed data.
+This task applies the identical rule to all five, symmetrically: a filter
+only keeps a toilet whose relevant fact is positively confirmed to satisfy
+it. `'unknown'` never matches; `'limited'` never satisfies the two
+`FeatureState` filters either, since the filter promises confident
+accessibility, not a partial or uncertain one. Against today's real
+ingested data — every toilet carries `'unknown'` for wheelchair/changing-
+table/24h — a filter on any of those can honestly return zero results.
+This is correct, not a defect: `TASK-017 — No-results and radius
+expansion`, the very next task on the roadmap, exists specifically because
+this was anticipated.
+
+Created: `lib/toilets/filter-nearby.ts` (`matchesFilters`, the pure
+predicate, and `filterNearbyToilets`, the server-side step). Filtering is
+applied in the nearby API, on the same nearest-30 candidates
+`db/queries/nearby.ts` already returns (unchanged), before ranking
+(`TASK-009`) — one code path, not a second client-side pass — because
+`openNow` cannot be evaluated in SQL (it depends on the request's own
+`now` and the bounded-grammar opening-hours evaluation, `TASK-013`) so
+every filter is applied in JS uniformly. A filtered response can be
+smaller than an unfiltered one even when more matching toilets exist
+farther away; expanding the radius to compensate is explicitly
+`TASK-017`'s job, not this route's.
+
+**Wired through the pipeline**: `nearby-request.ts` accepts an optional
+`filters` object (the field `docs/adr/0006-nearby-api-contract.md`
+deliberately withheld until this task could give it meaning);
+`nearby-response.ts` gained `open24h` (the raw fact the 24h filter reads,
+distinct from the computed `openingStatus`); `fetch-nearby.ts` omits the
+`filters` key entirely when none is active, so a pre-`TASK-016` request
+shape is unchanged. `MapShell.tsx` gained `activeFilters` (fed into the
+existing fetch effect, now also keyed on it) and a separate `draftFilters`
+state for the sheet's in-progress edits, so toggling a checkbox does not
+refetch on every click — only the sheet's "Apply" commits `draftFilters`
+into `activeFilters`.
+
+**No live "(N)" result count.** `DESIGN.md` 9.6's mockup shows one; an
+accurate live count would need a second, always-unfiltered candidate pool
+kept in sync alongside the displayed one — a real architectural addition
+`PLAN.md`'s actual outcome text does not ask for. The CTA reads `POKAŻ
+WYNIKI` without a count, the same category of decision as `TASK-010`'s
+deferred CTA.
+
+Verified: lint, format, typecheck, 194 unit tests (14 new — the filter
+predicate exhaustively, across every filter × feature-state combination,
+plus extended `nearby-request`/`fetch-nearby` assertions), 30 integration
+tests (unchanged — `db/queries/nearby.ts` itself was not touched), the
+production build, and 12 Playwright tests (1 new: check the `OTWARTE
+TERAZ` toggle, apply, assert the real intercepted request body carries
+`filters: { openNow: true }`, reopen the sheet and confirm it shows the
+already-applied state, then clear and confirm the next request carries no
+`filters` key at all).
+
+Not created, by design: radius expansion or a real empty-state design
+(`TASK-017`'s job), a live result count, filters beyond the five
+`PRODUCT.md` section 6.3 names, and any change to ranking or opening-
+status computation themselves.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -812,12 +877,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 180 tests in 25 files                          |
+| `pnpm test:unit`          | pass, 194 tests in 26 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 30 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 11 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view) |
+| `pnpm test:e2e`           | pass, 12 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet) |
 
 Also observed:
 
@@ -909,11 +974,12 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-016 — Core filters` per `PLAN.md`: "open-now, free, wheelchair,
-   baby-changing and 24h filters work with correct unknown semantics."
-   Needs a `tasks/016-*.md` file. `DESIGN.md` section 9.6 gives the filter
-   sheet's sections (`STATUS`/`CENA`/`DOSTĘPNOŚĆ`/`UDOGODNIENIA`) and CTA
-   copy; `docs/adr/0006-nearby-api-contract.md` deliberately left the
-   request schema without a `filters` field until this task exists to give
-   it real meaning. Filters apply to both the map markers and the list
-   view (`TASK-015`) from the same filtered result set.
+2. `TASK-017 — No-results and radius expansion` per `PLAN.md`: "empty
+   state offers a useful fallback and can search farther." Needs a
+   `tasks/017-*.md` file. `PRODUCT.md` section 6.2 governs the no-useful-
+   result journey (say so clearly, show alternatives beyond the default
+   radius, allow expanding the search, never imply nothing exists
+   anywhere) and `DESIGN.md` section 9.8's "No results" screen. `TASK-016`
+   made this a real, reachable state — a filter honestly returns few or no
+   results against today's mostly-unconfirmed data — rather than a
+   hypothetical one.

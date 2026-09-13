@@ -24,6 +24,38 @@ describe('fetchNearbyToilets', () => {
     );
   });
 
+  it('includes filters in the request body when at least one is active (TASK-016)', async () => {
+    const fetchImpl = fakeFetch({ jsonBody: { results: [] } });
+
+    await fetchNearbyToilets(
+      { lat: 52.2297, lng: 21.0122, filters: { openNow: true, free: true } },
+      fetchImpl,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/toilets/nearby',
+      expect.objectContaining({
+        body: JSON.stringify({
+          location: { lat: 52.2297, lng: 21.0122 },
+          filters: { openNow: true, free: true },
+        }),
+      }),
+    );
+  });
+
+  it('omits the filters key entirely when the filters object is empty', async () => {
+    const fetchImpl = fakeFetch({ jsonBody: { results: [] } });
+
+    await fetchNearbyToilets({ lat: 52.2297, lng: 21.0122, filters: {} }, fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/toilets/nearby',
+      expect.objectContaining({
+        body: JSON.stringify({ location: { lat: 52.2297, lng: 21.0122 } }),
+      }),
+    );
+  });
+
   it('resolves ok with the results array on success', async () => {
     const fetchImpl = fakeFetch({ jsonBody: { results: [{ id: 'a' }] } });
 

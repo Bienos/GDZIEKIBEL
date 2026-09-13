@@ -28,8 +28,9 @@ app/
     page.tsx          top bar (wordmark, language switch) + the map shell
     page.module.css   styles for the top bar and page layout
   api/toilets/nearby/route.ts
-                      POST only; bounded nearby active toilets, reordered by
-                      rankNearbyToilets (TASK-009); no filters yet
+                      POST only; bounded nearby active toilets, filtered
+                      (TASK-016, ADR 0011) and reordered by
+                      rankNearbyToilets (TASK-009)
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -40,7 +41,8 @@ components/
                       load before its first successful load, independent of
                       that, the location ask/denied screens on mount and the
                       nearby-toilets fetch centred on the default Warsaw view;
-                      owns the map/list `viewMode` toggle (TASK-015)
+                      owns the map/list `viewMode` toggle (TASK-015) and the
+                      active filters feeding that same fetch (TASK-016)
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -57,6 +59,11 @@ components/
                       status/price, a real navigation CTA (TASK-012),
                       accessibility features, confidence hint; no hours or
                       report control yet (see the task file for why)
+  map/FiltersSheet.tsx
+                      the five MVP filters (TASK-016, DESIGN.md 9.6): four
+                      sections, toggles bound to a draft state; POKAŻ WYNIKI
+                      applies it, WYCZYŚĆ clears and reapplies; no live
+                      result count (see the task file for why)
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -76,17 +83,26 @@ lib/
                       distance -> approximate minutes, one named conservative
                       constant (ADR 0006)
   toilets/nearby-request.ts
-                      validates a nearby-API request body; no filters field
-                      yet, see ADR 0006
+                      validates a nearby-API request body; accepts an
+                      optional `filters` object since TASK-016 (ADR 0006,
+                      ADR 0011)
+  toilets/filter-nearby.ts
+                      the five MVP filters' matching predicate and the
+                      server-side filter step (TASK-016, ADR 0011): a
+                      filter only keeps a positively-confirmed fact, never
+                      'unknown' or 'limited'; pure, no database
   toilets/nearby-response.ts
                       shapes one DB row into the nearby-API response item;
                       enum values pass through unchanged, never booleans;
                       openingStatus is now computed by
                       computeOpeningStatus, given an explicit `now` (TASK-013);
                       paymentMethods is never null in the response — a null
-                      row value becomes all-unknown (TASK-014)
+                      row value becomes all-unknown (TASK-014); open24h is
+                      also exposed, the raw fact TASK-016's filter reads
   toilets/fetch-nearby.ts
-                      client-side call to the nearby API; never throws
+                      client-side call to the nearby API; never throws;
+                      omits the `filters` key entirely when none is active
+                      (TASK-016)
   toilets/marker-diff.ts
                       pure add/remove reconciliation between a marker id set
                       and a new toilet list
@@ -206,6 +222,10 @@ Ownership:
   `<amount> <currency>` grammar for `charge` (PLN/EUR/USD only), and three
   payment-method flags (cash/cards/coins) normalised from OSM's `payment:*`
   tags, not the full namespace.
+- `docs/adr/0011-filter-semantics.md` — a filter only keeps a toilet whose
+  relevant fact is positively confirmed; `'unknown'` and `'limited'` never
+  satisfy an active filter, applied server-side within the existing
+  nearest-30-candidate cap.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -245,12 +265,18 @@ accessible list view showing the same, already-ranked `toilets` array —
 name, distance/ETA, status, price, up to two feature badges — where a row
 tap opens the identical detail sheet a marker or the preview would;
 `DESIGN.md` section 14's "map has equivalent list representation" is now
-real, not aspirational. The report control still does not exist on the
-detail sheet (`TASK-020`'s job). No filters exist yet (`TASK-016`). No
-deduplication, real confidence scoring, reporting, analytics or error-
-tracking code exists. Ingestion exists but has never run against the live
-source — so the opening-hours and charge parsers have never seen a real
-OSM string, only constructed fixtures matching their documented grammars
+real, not aspirational. The five MVP filters (TASK-016, ADR 0011) apply
+server-side, within the existing nearest-30-candidate cap, to markers, the
+list, and the preview alike, since all three read the one filtered
+`toilets` state; a filter only keeps a positively-confirmed fact, so
+against today's mostly-unconfirmed real data a filter can honestly return
+few or no results — `TASK-017`'s radius expansion is the next task
+because that is expected. The report control still does not exist on the
+detail sheet (`TASK-020`'s job). No deduplication, real confidence
+scoring, reporting, analytics or error-tracking code exists. Ingestion
+exists but has never run against the live source — so the opening-hours
+and charge parsers have never seen a real OSM string, only constructed
+fixtures matching their documented grammars
 — and the map — tiles, the location dot, and the toilet markers — has
 never been visually observed rendering for real
 from this session. Those areas are owned by later tasks.

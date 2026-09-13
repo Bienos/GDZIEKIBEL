@@ -11,7 +11,7 @@ describe('parseNearbyRequest', () => {
 
     expect(result).toEqual({
       ok: true,
-      params: { lat: 52.2297, lng: 21.0122, radiusMeters: DEFAULT_RADIUS_METERS },
+      params: { lat: 52.2297, lng: 21.0122, radiusMeters: DEFAULT_RADIUS_METERS, filters: {} },
     });
   });
 
@@ -21,7 +21,10 @@ describe('parseNearbyRequest', () => {
       radiusMeters: 800,
     });
 
-    expect(result).toEqual({ ok: true, params: { lat: 52.2297, lng: 21.0122, radiusMeters: 800 } });
+    expect(result).toEqual({
+      ok: true,
+      params: { lat: 52.2297, lng: 21.0122, radiusMeters: 800, filters: {} },
+    });
   });
 
   it('clamps a radius above the server-controlled maximum rather than rejecting it', () => {
@@ -32,7 +35,7 @@ describe('parseNearbyRequest', () => {
 
     expect(result).toEqual({
       ok: true,
-      params: { lat: 52.2297, lng: 21.0122, radiusMeters: MAX_RADIUS_METERS },
+      params: { lat: 52.2297, lng: 21.0122, radiusMeters: MAX_RADIUS_METERS, filters: {} },
     });
   });
 
@@ -64,12 +67,38 @@ describe('parseNearbyRequest', () => {
     expect(parseNearbyRequest('not an object').ok).toBe(false);
   });
 
-  it('rejects an unrecognised field rather than silently ignoring it, including filters', () => {
-    // filters is not implemented yet (ADR 0006); a client sending it should
-    // learn that now, not believe it was applied.
+  it('rejects an unrecognised top-level field rather than silently ignoring it', () => {
     const result = parseNearbyRequest({
       location: { lat: 52.2297, lng: 21.0122 },
-      filters: { openNow: true },
+      sortBy: 'distance',
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts filters (TASK-016), defaulting to none when omitted', () => {
+    const withFilters = parseNearbyRequest({
+      location: { lat: 52.2297, lng: 21.0122 },
+      filters: { openNow: true, free: true },
+    });
+    const withoutFilters = parseNearbyRequest({ location: { lat: 52.2297, lng: 21.0122 } });
+
+    expect(withFilters).toEqual({
+      ok: true,
+      params: {
+        lat: 52.2297,
+        lng: 21.0122,
+        radiusMeters: DEFAULT_RADIUS_METERS,
+        filters: { openNow: true, free: true },
+      },
+    });
+    if (withoutFilters.ok) expect(withoutFilters.params.filters).toEqual({});
+  });
+
+  it('rejects an unrecognised filter key rather than silently ignoring it', () => {
+    const result = parseNearbyRequest({
+      location: { lat: 52.2297, lng: 21.0122 },
+      filters: { openNow: true, priceUnder: 5 },
     });
 
     expect(result.ok).toBe(false);

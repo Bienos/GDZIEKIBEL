@@ -11,6 +11,7 @@ function toilet(id: string): NearbyToiletResult {
     distanceMeters: 100,
     approxWalkingMinutes: 2,
     openingStatus: 'UNKNOWN',
+    open24h: null,
     priceState: 'unknown',
     priceAmountMinor: null,
     currency: null,

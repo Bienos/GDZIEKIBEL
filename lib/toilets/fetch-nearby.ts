@@ -1,3 +1,4 @@
+import type { NearbyFilters } from './filter-nearby';
 import type { NearbyToiletResult } from './nearby-response';
 
 /**
@@ -9,6 +10,9 @@ import type { NearbyToiletResult } from './nearby-response';
 export interface FetchNearbyParams {
   lat: number;
   lng: number;
+  /** Omitted (or `{}`) when no filter is active — the request body then
+   * carries no `filters` key at all, matching pre-`TASK-016` requests. */
+  filters?: NearbyFilters;
 }
 
 export type FetchNearbyResult =
@@ -19,10 +23,14 @@ export async function fetchNearbyToilets(
   fetchImpl: typeof fetch = fetch,
 ): Promise<FetchNearbyResult> {
   try {
+    const hasFilters = params.filters && Object.keys(params.filters).length > 0;
     const response = await fetchImpl('/api/toilets/nearby', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ location: { lat: params.lat, lng: params.lng } }),
+      body: JSON.stringify({
+        location: { lat: params.lat, lng: params.lng },
+        ...(hasFilters ? { filters: params.filters } : {}),
+      }),
     });
 
     if (!response.ok) {
