@@ -69,6 +69,8 @@ Ownership:
 - `docs/adr/0001-foundation-stack.md` — package manager, runtime, migration
   tooling, test runners, styling approach.
 - `docs/contracts/` — empty; no cross-layer contract exists yet.
+- `docs/research/` — dated research snapshots. Evidence, not a source of truth;
+  see `docs/research/README.md`.
 
 ## Approved design reference
 

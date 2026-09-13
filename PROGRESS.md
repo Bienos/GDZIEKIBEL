@@ -39,6 +39,16 @@ and integration projects, a Playwright smoke test, a GitHub Actions CI workflow
 and Vercel build configuration. `docs/adr/0001-foundation-stack.md` records the
 tooling decisions.
 
+### TASK-002 — Data-source research and source decision
+
+Not complete. Desk research was supplied by the project owner on 2026-09-13 and
+is committed verbatim at `docs/research/2026-09-13-warsaw-toilet-sources.md`.
+The task specification exists at `tasks/002-data-source-research.md`.
+
+The research states in its own limitations section that the Warsaw open-data
+toilet dataset endpoint, schema and licence were not verified against the live
+service. That verification is the remaining work and has not been done.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -110,7 +120,14 @@ Not verifiable in this environment, and therefore not claimed:
   deployment could not be created or inspected from here. Direct network access
   to Vercel hosts is also blocked by the environment's egress policy.
 - CI has not been observed running on GitHub; the workflow is untested there.
+- The TASK-002 source verification could not be started from this environment.
+  On 2026-09-13 the egress proxy answered HTTP 403 to CONNECT for
+  `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
+  `warszawa19115.pl` and `overpass-api.de`. No Warsaw or OpenStreetMap value has
+  been observed, so none is recorded as fact.
 
 ## Next approved task
 
-`TASK-002 — Data-source research and source decision` per `PLAN.md`. Not started.
+`TASK-002 — Data-source research and source decision`. Specified in
+`tasks/002-data-source-research.md`. Blocked on network access to the Warsaw and
+OpenStreetMap services, which this environment denies.
