@@ -25,10 +25,15 @@ Task specifications live in `tasks/`.
 app/
   [locale]/
     layout.tsx        root layout, <html lang> per locale, metadata, hreflang
-    page.tsx          minimal foundation shell (no map/geolocation/toilet data)
-    page.module.css   styles for the shell only
-  globals.css         reset, body defaults, imports tokens.css
+    page.tsx          top bar (wordmark, language switch) + the map shell
+    page.module.css   styles for the top bar and page layout
+  globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
+components/
+  map/MapShell.tsx    the Warsaw map (TASK-005); renders the literal fallback
+                      state when no tile provider key is configured or the
+                      map fails to load before its first successful load
+  map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
   i18n/               supported locales and the copy dictionaries
@@ -36,6 +41,9 @@ lib/
   toilets/normalized-source-record.ts
                       Zod schema an ingestion adapter must emit (contract section 6)
   geo/warsaw.ts       coarse Warsaw bounding box, a first filter only
+  map/tile-provider.ts  builds the MapTiler style URL from a key; the one
+                      place that knows the provider's URL shape
+  map/warsaw-view.ts  initial camera position and pan limits for the map shell
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -87,6 +95,8 @@ Ownership:
 - `docs/adr/0004-schema-conventions.md` — unknown is a value, trigger-maintained
   timestamps, never-delete provenance, and every departure from
   `ARCHITECTURE.md` section 5 with its reason.
+- `docs/adr/0005-map-tile-provider.md` — MapTiler as the provisional,
+  configurable tile provider, and why the map shell requires a fallback state.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -98,7 +108,9 @@ Ownership:
 
 ## Not yet created
 
-No map, geolocation, nearby query, ranking, deduplication, opening-hours
-parsing, confidence scoring, reporting, analytics or error-tracking code
-exists. Ingestion exists but has never run against the live source. Those
-areas are owned by later tasks.
+A Warsaw map shell renders with no geolocation, markers, ranking, or bottom
+sheet. No nearby query, deduplication, opening-hours parsing, confidence
+scoring, reporting, analytics or error-tracking code exists. Ingestion exists
+but has never run against the live source, and the map has never been
+visually observed with real tiles from this session. Those areas are owned
+by later tasks.

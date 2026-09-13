@@ -209,6 +209,58 @@ its counts. This session's egress denies `overpass-api.de`.
 Not created, by design: any deduplication, opening-hours parsing, confidence
 scoring, scheduled workflow, query module or UI.
 
+### TASK-005 — Render Warsaw map shell
+
+Complete on 2026-09-13, with live tile rendering unverified from this session.
+Specified in `tasks/005-render-map-shell.md`. Tile provider decision in
+`docs/adr/0005-map-tile-provider.md`.
+
+Created: `components/map/MapShell.tsx`, a vanilla `maplibre-gl` client
+component (no React wrapper library), centred on Warsaw and bounded to the
+same coarse box `lib/geo/warsaw.ts` already defines for ingestion. The tile
+provider is MapTiler, chosen as swappable per `ARCHITECTURE.md` section 23,
+configured through one variable, `NEXT_PUBLIC_MAPTILER_KEY`, built into a
+style URL by the single-purpose `lib/map/tile-provider.ts`.
+
+The TASK-001 placeholder copy stating the map does not work was removed; it
+is no longer true, and no new hero copy was added in its place, since that is
+`DESIGN.md` section 9.1's job and out of this task's scope.
+
+**Fallback state, and why it matters beyond this sandboxed environment.** No
+key is committed anywhere, so the map must render correctly with the
+variable absent: the component never imports or initialises `maplibre-gl` in
+that case, and shows `BRAND.md`'s "API/network error" copy instead, in both
+locales. This is also the state a real deployment shows before a key is
+configured, or if one is later revoked. Verified by the real Playwright suite
+running against a production build (`pnpm build && pnpm start`) with no key
+set: both tests pass, asserting the exact fallback text and retry button in
+each language.
+
+**A load failure after a key is configured** — network blocked, invalid key,
+provider down — is also handled: the map only falls back if it errors before
+its first successful `load`, so one bad tile after a working session does not
+nuke the whole shell. This was verified manually against a production build
+with a syntactically valid but unreachable key: MapLibre initialised, created
+a canvas, received no response from `api.maptiler.com` (this session's egress
+denies it), and transitioned to the same fallback state. Not part of the
+committed automated suite, because it would require committing a real key or
+faking a provider response; recorded here as an observed fact instead.
+
+**A debugging note worth keeping.** Diagnosing the load-failure path first
+by hand against `next dev` produced no observable client-side execution at
+all, with no console output and no error. Retesting the identical component
+against `next build && next start` (the runtime the E2E suite actually uses)
+worked immediately. Whatever caused that was specific to Turbopack's dev
+server in this sandboxed environment and did not reproduce against the real
+runtime, so it is not treated as a product defect.
+
+**Still unverified:** real tiles have never been painted from this session.
+No environment available here holds a working key, and this session's egress
+denies `api.maptiler.com`. Closing this needs a session in the GdzieKibel
+cloud environment with `NEXT_PUBLIC_MAPTILER_KEY` set to a real, domain-
+restricted key, running `pnpm dev` or `pnpm build && pnpm start` and looking
+at the page.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -244,12 +296,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 73 tests in 8 files                            |
+| `pnpm test:unit`          | pass, 80 tests in 10 files                           |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 19 tests in 3 files                            |
-| `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project       |
+| `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project (map fallback) |
 
 Also observed:
 
@@ -336,6 +388,10 @@ pnpm ingest:osm
 Record the boundary relation it resolves and its counts here. That closes
 TASK-004 and, with the same run, most of the TASK-002 observation gaps.
 
-Then `TASK-005 — Render Warsaw map shell` per `PLAN.md`, which needs a
-`tasks/005-*.md` file and a decision on the map tile provider, still open in
-`ARCHITECTURE.md` section 23.
+Two things, in order:
+
+1. Visually confirm the map shell renders real tiles, from a session with a
+   real `NEXT_PUBLIC_MAPTILER_KEY` and working egress to `api.maptiler.com`.
+2. `TASK-006 — Request and display user location` per `PLAN.md`, which needs
+   a `tasks/006-*.md` file. This is the task that adds the permission request
+   and the location dot on top of the shell TASK-005 built.

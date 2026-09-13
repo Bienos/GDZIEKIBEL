@@ -15,10 +15,18 @@ import type { Locale } from './index';
 export interface Dictionary {
   /** Small label above the wordmark. */
   stage: string;
-  /** The one placeholder line the foundation shell is allowed to show. */
-  placeholder: string;
   /** Accessible name for the language switch. */
   languageSwitchLabel: string;
+  /** Accessible name for the map region, read by screen readers. */
+  mapAccessibleLabel: string;
+  /**
+   * Fallback state shown when the tile provider key is absent or the map
+   * fails to initialise. `BRAND.md`'s "API/network error" copy, two layers:
+   * a punchline and a literal explanation naming the map specifically.
+   */
+  mapUnavailablePunchline: string;
+  mapUnavailableExplanation: string;
+  mapUnavailableRetry: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -27,15 +35,21 @@ export interface Dictionary {
 export const DICTIONARIES: Record<Locale, Dictionary> = {
   pl: {
     stage: 'Fundament projektu',
-    placeholder: 'Aplikacja jest w budowie. Mapa i wyszukiwanie toalet jeszcze nie działają.',
     languageSwitchLabel: 'Zmień język',
+    mapAccessibleLabel: 'Interaktywna mapa Warszawy',
+    mapUnavailablePunchline: 'COŚ SIĘ WYSRAŁO.',
+    mapUnavailableExplanation: 'Nie udało się załadować mapy.',
+    mapUnavailableRetry: 'SPRÓBUJ JESZCZE RAZ',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
   en: {
     stage: 'Project foundation',
-    placeholder: 'This app is still being built. The map and toilet search do not work yet.',
     languageSwitchLabel: 'Change language',
+    mapAccessibleLabel: 'Interactive map of Warsaw',
+    mapUnavailablePunchline: 'Something went wrong.',
+    mapUnavailableExplanation: 'The map could not load.',
+    mapUnavailableRetry: 'TRY AGAIN',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },
