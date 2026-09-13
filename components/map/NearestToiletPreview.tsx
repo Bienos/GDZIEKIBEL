@@ -9,18 +9,26 @@ import styles from './MapShell.module.css';
  * `tasks/010-nearest-toilet-preview.md` for why this reads `toilets[0]`
  * rather than `selectedId`.
  *
- * Not modal: it does not dim or block the map, and has no CTA yet — see the
- * same task file for why one is not added until a real destination exists.
+ * Not modal: it does not dim or block the map. Tapping it opens the detail
+ * sheet for this toilet (`TASK-011`, via `onSelect`) — the destination
+ * `TASK-010` deferred because it did not exist yet.
  */
 export function NearestToiletPreview({
   toilet,
   dictionary,
+  onSelect,
 }: {
   toilet: NearbyToiletResult;
   dictionary: Dictionary;
+  onSelect: () => void;
 }) {
   return (
-    <div className={styles.preview} role="region" aria-label={dictionary.previewLabel}>
+    <button
+      type="button"
+      className={styles.preview}
+      aria-label={`${dictionary.previewOpenDetailsLabel}: ${toilet.name}`}
+      onClick={onSelect}
+    >
       <p className={styles.previewLabel}>{dictionary.previewLabel}</p>
       <p className={styles.previewName}>{toilet.name}</p>
       <p className={styles.previewDistance}>
@@ -34,6 +42,6 @@ export function NearestToiletPreview({
           {priceLabel(toilet.priceState, dictionary)}
         </span>
       </div>
-    </div>
+    </button>
   );
 }

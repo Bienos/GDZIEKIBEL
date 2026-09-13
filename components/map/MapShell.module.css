@@ -76,6 +76,7 @@
 }
 
 .sheet {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -212,7 +213,8 @@
 /* The nearest-toilet preview (TASK-010, DESIGN.md 9.3). Anchored to the
    bottom like the location sheets, but not a scrim: it does not dim or
    block the map, since it is informational, not a decision the user must
-   resolve before continuing. */
+   resolve before continuing. A <button> (TASK-011): tapping it opens the
+   detail sheet, so the usual button chrome is reset back to plain text. */
 .preview {
   position: absolute;
   left: 0;
@@ -222,13 +224,23 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
+  width: 100%;
   padding: var(--space-4) var(--space-5);
   padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
   background: var(--bg-primary);
   color: var(--text-primary);
+  border: none;
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
   box-shadow: 0 -2px 12px rgb(11 11 11 / 15%);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preview:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
 }
 
 .previewLabel {
@@ -288,4 +300,62 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
+}
+
+/* previewBadgeStatus/previewBadgePrice above are shared with the toilet
+   detail sheet (TASK-011): same status/price copy, same visual language. */
+
+/* The detail sheet's close control (TASK-011). Absolutely positioned within
+   .sheet, which is why .sheet was given `position: relative`. Text, not an
+   icon, per this project's established avoidance of an icon library. */
+.detailClose {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  font-size: var(--type-small-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.detailClose:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+/* Accessibility features as a plain label/value list (DESIGN.md 9.4). */
+.detailFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  width: 100%;
+}
+
+.detailFeatureRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.detailFeatureLabel {
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+}
+
+.detailFeatureValue {
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+  font-weight: 700;
 }

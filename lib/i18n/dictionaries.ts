@@ -62,6 +62,25 @@ export interface Dictionary {
   previewPriceFree: string;
   previewPricePaid: string;
   previewPriceUnknown: string;
+  /** Accessible label prefix for the preview's tap-to-expand affordance. */
+  previewOpenDetailsLabel: string;
+  /**
+   * The toilet detail sheet (TASK-011). `DESIGN.md` section 9.4's
+   * information order: name, distance/ETA and status/price reuse the
+   * preview's own copy; these are the feature and confidence labels it
+   * adds, plus the close control's accessible name.
+   */
+  detailClose: string;
+  detailFeatureWheelchair: string;
+  detailFeatureChangingTable: string;
+  detailFeatureUnisex: string;
+  detailFeatureYes: string;
+  detailFeatureNo: string;
+  detailFeatureLimited: string;
+  detailFeatureUnknown: string;
+  detailConfidenceHigh: string;
+  detailConfidenceMedium: string;
+  detailConfidenceLow: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -93,6 +112,18 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     previewPriceFree: 'ZA DARMO',
     previewPricePaid: 'PŁATNY',
     previewPriceUnknown: 'CENA NIEZNANA',
+    previewOpenDetailsLabel: 'Otwórz szczegóły toalety',
+    detailClose: 'ZAMKNIJ',
+    detailFeatureWheelchair: 'DOSTĘP DLA WÓZKÓW',
+    detailFeatureChangingTable: 'PRZEWIJAK',
+    detailFeatureUnisex: 'TOALETA UNISEX',
+    detailFeatureYes: 'TAK',
+    detailFeatureNo: 'NIE',
+    detailFeatureLimited: 'OGRANICZONE',
+    detailFeatureUnknown: 'NIEZNANE',
+    detailConfidenceHigh: 'PEWNOŚĆ DANYCH: WYSOKA',
+    detailConfidenceMedium: 'PEWNOŚĆ DANYCH: ŚREDNIA',
+    detailConfidenceLow: 'PEWNOŚĆ DANYCH: NISKA',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
@@ -121,6 +152,18 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     previewPriceFree: 'FREE',
     previewPricePaid: 'PAID',
     previewPriceUnknown: 'PRICE UNKNOWN',
+    previewOpenDetailsLabel: 'Open toilet details',
+    detailClose: 'CLOSE',
+    detailFeatureWheelchair: 'WHEELCHAIR ACCESS',
+    detailFeatureChangingTable: 'BABY CHANGING',
+    detailFeatureUnisex: 'UNISEX TOILET',
+    detailFeatureYes: 'YES',
+    detailFeatureNo: 'NO',
+    detailFeatureLimited: 'LIMITED',
+    detailFeatureUnknown: 'UNKNOWN',
+    detailConfidenceHigh: 'DATA CONFIDENCE: HIGH',
+    detailConfidenceMedium: 'DATA CONFIDENCE: MEDIUM',
+    detailConfidenceLow: 'DATA CONFIDENCE: LOW',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },

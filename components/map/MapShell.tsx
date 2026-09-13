@@ -16,14 +16,15 @@ import { diffMarkers } from '@/lib/toilets/marker-diff';
 import { createToiletMarkerElement, setMarkerSelected } from '@/lib/toilets/marker-element';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
 import { NearestToiletPreview } from './NearestToiletPreview';
+import { ToiletDetailSheet } from './ToiletDetailSheet';
 import styles from './MapShell.module.css';
 
 /**
  * The Warsaw map shell (TASK-005), the location permission flow (TASK-006),
- * nearby toilet markers with click-to-select (TASK-008), and the collapsed
+ * nearby toilet markers with click-to-select (TASK-008), the collapsed
  * nearest-toilet preview (TASK-010, reading the API's now-ranked order from
- * TASK-009). No detail sheet, no filters, no list view — those are later
- * tasks.
+ * TASK-009), and the toilet detail sheet (TASK-011), opened by tapping
+ * either of those. No filters, no list view — those are later tasks.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -227,6 +228,9 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     setLocationFlow('denied');
   }
 
+  const selectedToilet = toilets.find((toilet) => toilet.id === selectedId) ?? null;
+  const recommendedToilet = toilets[0] ?? null;
+
   return (
     <div className={styles.mapWrapper}>
       {!styleUrl || tilesFailed ? (
@@ -253,9 +257,22 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         />
       )}
 
-      {(locationFlow === 'granted' || locationFlow === 'dismissed') && toilets[0] && (
-        <NearestToiletPreview toilet={toilets[0]} dictionary={dictionary} />
-      )}
+      {(locationFlow === 'granted' || locationFlow === 'dismissed') &&
+        (selectedToilet ? (
+          <ToiletDetailSheet
+            toilet={selectedToilet}
+            dictionary={dictionary}
+            onClose={() => setSelectedId(null)}
+          />
+        ) : (
+          recommendedToilet && (
+            <NearestToiletPreview
+              toilet={recommendedToilet}
+              dictionary={dictionary}
+              onSelect={() => setSelectedId(recommendedToilet.id)}
+            />
+          )
+        ))}
 
       {(locationFlow === 'asking' || locationFlow === 'requesting') && (
         <div className={styles.scrim}>

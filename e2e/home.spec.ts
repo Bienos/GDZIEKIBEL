@@ -1,16 +1,19 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010 smoke tests: the home page loads with the
+ * TASK-005/006/008/010/011 smoke tests: the home page loads with the
  * GdzieKibel.pl identity, the map shell's tile fallback state (since no
  * environment available to this suite holds a real MapTiler key — see
  * docs/adr/0005-map-tile-provider.md), the location permission flow, the
- * nearby-toilets fetch, and the nearest-toilet preview.
+ * nearby-toilets fetch, the nearest-toilet preview, and the toilet detail
+ * sheet it opens into.
  *
- * The permission ask, the fetch, and the preview all appear independent of
- * tile state (see MapShell.tsx), so they are fully testable here even
- * though live tiles are not. A live-tile smoke test belongs wherever a key
- * is configured.
+ * The permission ask, the fetch, the preview, and the detail sheet all
+ * appear independent of tile state (see MapShell.tsx), so they are fully
+ * testable here even though live tiles are not. Marker-click selection is
+ * not covered: this environment cannot render real markers either. A
+ * live-tile smoke test, including marker clicks, belongs wherever a key is
+ * configured.
  */
 test('the bare domain serves the Polish shell with the map fallback state', async ({ page }) => {
   await page.goto('/');
@@ -196,7 +199,9 @@ test('the nearest-toilet preview shows the top-ranked result, and not before the
 
   await page.goto('/pl');
 
-  const preview = page.getByRole('region', { name: 'NAJBLIŻSZY SENSOWNY KIBEL' });
+  const preview = page.getByRole('button', {
+    name: 'Otwórz szczegóły toalety: Toaleta Testowa',
+  });
   // Not shown while the location ask still covers the screen.
   await expect(preview).toHaveCount(0);
 
@@ -207,4 +212,62 @@ test('the nearest-toilet preview shows the top-ranked result, and not before the
   await expect(preview.getByText('240 M · ~4 MIN PIESZO')).toBeVisible();
   await expect(preview.getByText('STATUS NIEPEWNY')).toBeVisible();
   await expect(preview.getByText('ZA DARMO')).toBeVisible();
+});
+
+test('tapping the preview opens the toilet detail sheet, and closing it returns to the preview', async ({
+  page,
+}) => {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            id: '11111111-1111-1111-1111-111111111111',
+            name: 'Toaleta Testowa',
+            lat: 52.2297,
+            lng: 21.0122,
+            distanceMeters: 239.6,
+            approxWalkingMinutes: 4,
+            openingStatus: 'UNKNOWN',
+            priceState: 'paid',
+            confidenceLevel: 'low',
+            accessType: 'public_unconditional',
+            features: { wheelchair: 'yes', changingTable: 'limited', unisex: 'unknown' },
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  const preview = page.getByRole('button', {
+    name: 'Otwórz szczegóły toalety: Toaleta Testowa',
+  });
+  await expect(preview).toBeVisible();
+  await preview.click();
+
+  const heading = page.getByRole('heading', { name: 'Toaleta Testowa' });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+  await expect(preview).toHaveCount(0);
+
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('240 M · ~4 MIN PIESZO')).toBeVisible();
+  await expect(sheet.getByText('STATUS NIEPEWNY')).toBeVisible();
+  await expect(sheet.getByText('PŁATNY')).toBeVisible();
+  await expect(sheet.getByText('DOSTĘP DLA WÓZKÓW')).toBeVisible();
+  await expect(sheet.getByText('TAK')).toBeVisible();
+  await expect(sheet.getByText('PRZEWIJAK')).toBeVisible();
+  await expect(sheet.getByText('OGRANICZONE')).toBeVisible();
+  await expect(sheet.getByText('TOALETA UNISEX')).toBeVisible();
+  await expect(sheet.getByText('PEWNOŚĆ DANYCH: NISKA')).toBeVisible();
+
+  await page.getByRole('button', { name: 'ZAMKNIJ' }).click();
+
+  await expect(sheet).toHaveCount(0);
+  await expect(preview).toBeVisible();
 });

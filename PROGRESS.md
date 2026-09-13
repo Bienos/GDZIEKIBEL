@@ -504,6 +504,55 @@ variant (now reachable given `TASK-009`'s ranking, but a map-marker concern
 belonging with `TASK-008`'s code, not this preview card, and not asked for
 by `PLAN.md`'s TASK-010 outcome), the detail sheet, or real navigation.
 
+### TASK-011 — Toilet detail sheet
+
+Complete on 2026-09-13. Specified in `tasks/011-toilet-detail-sheet.md`.
+
+Created: `components/map/ToiletDetailSheet.tsx`, opened by tapping either
+the nearest-toilet preview (now a `<button>`, resolving `TASK-010`'s
+deferred CTA question) or a marker (`TASK-008`'s existing `selectedId`
+state) — both entry points share the same state, so `FR-04`'s "selected
+marker and selected detail card remain synchronised" holds without a new
+mechanism. Shows name, distance/ETA and status/price (reusing `TASK-010`'s
+own `preview-copy.ts`), plus two additions from `lib/toilets/detail-copy.ts`:
+accessibility features (wheelchair/changing table/unisex, all four
+`FeatureState` values distinct) and a data-confidence hint.
+
+**Two of `DESIGN.md` section 9.4's eight information-order items are still
+missing, deliberately.** The primary CTA (`PROWADŹ MNIE`) has no real
+destination until `TASK-012` wires up navigation; the report control has
+none until `TASK-020` builds that flow. Both would be exactly the
+dead-ended affordance `TASK-010` already avoided for its own CTA — the same
+reasoning, applied consistently, rather than re-litigated per task. Hours
+are also not shown: the nearby API does not return them at all yet
+(`docs/adr/0006-nearby-api-contract.md`), and extending that contract is
+not this task's job.
+
+**The confidence hint reports the real, currently-constant value.** Every
+toilet in the pipeline today carries `confidence_level = 'low'` (nothing
+sets it higher yet — `TASK-019`'s job); the sheet says exactly that
+(`PEWNOŚĆ DANYCH: NISKA` / `DATA CONFIDENCE: LOW`) rather than a fabricated
+higher confidence.
+
+Verified: lint, format, typecheck, 131 unit tests (4 new, for the feature/
+confidence copy functions), 25 integration tests (unchanged), the
+production build, and 9 Playwright tests (1 new) — tapping the preview,
+asserting the sheet's real intercepted name/distance/status/price/features/
+confidence, confirming focus moves to the heading, closing it, and
+confirming the preview reappears.
+
+Not created, by design: the primary navigation CTA, hours display, the
+report control, any change to the nearby-API response shape, and swipe/drag
+sheet gestures (`DESIGN.md` section 10 recommends a graduated collapsed/
+half-height/expanded interaction; this ships one collapsed state and one
+open state, not a drag mechanism).
+
+**Marker-click selection remains untested here, unchanged from TASK-008.**
+This environment cannot render live tiles or real markers, so only the
+preview-tap entry point to the detail sheet is covered by Playwright; the
+marker-click entry point uses the identical `selectedId` state and is
+correct by inspection, same as the existing, already-documented gap.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -539,12 +588,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 127 tests in 19 files                          |
+| `pnpm test:unit`          | pass, 131 tests in 20 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 25 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 8 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview) |
+| `pnpm test:e2e`           | pass, 9 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet) |
 
 Also observed:
 
@@ -636,8 +685,9 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-011 — Toilet detail sheet` per `PLAN.md`: a usable detail sheet for
-   the selected toilet with known metadata and explicit unknown states,
-   opened from the nearest-toilet preview or a marker. Needs a
-   `tasks/011-*.md` file. `DESIGN.md` section 9.4 gives its information
-   order and CTA copy.
+2. `TASK-012 — External walking navigation` per `PLAN.md`: `PROWADŹ MNIE`
+   launches a tested walking-navigation destination flow, becoming the
+   detail sheet's primary CTA that `TASK-011` deliberately left out. Needs a
+   `tasks/012-*.md` file. `PRODUCT.md` section 12 ("Navigation") and
+   `BRAND.md`'s "Navigation" copy govern it; at this point, per `PLAN.md`,
+   "the first core journey should work end to end" (Milestone 1 complete).
