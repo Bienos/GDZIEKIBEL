@@ -15,12 +15,15 @@ import { fetchNearbyToilets } from '@/lib/toilets/fetch-nearby';
 import { diffMarkers } from '@/lib/toilets/marker-diff';
 import { createToiletMarkerElement, setMarkerSelected } from '@/lib/toilets/marker-element';
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
+import { NearestToiletPreview } from './NearestToiletPreview';
 import styles from './MapShell.module.css';
 
 /**
  * The Warsaw map shell (TASK-005), the location permission flow (TASK-006),
- * and nearby toilet markers with click-to-select (TASK-008). No ranking, no
- * detail sheet, no filters, no list view — those are later tasks.
+ * nearby toilet markers with click-to-select (TASK-008), and the collapsed
+ * nearest-toilet preview (TASK-010, reading the API's now-ranked order from
+ * TASK-009). No detail sheet, no filters, no list view — those are later
+ * tasks.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -248,6 +251,10 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
           role="region"
           aria-label={dictionary.mapAccessibleLabel}
         />
+      )}
+
+      {(locationFlow === 'granted' || locationFlow === 'dismissed') && toilets[0] && (
+        <NearestToiletPreview toilet={toilets[0]} dictionary={dictionary} />
       )}
 
       {(locationFlow === 'asking' || locationFlow === 'requesting') && (

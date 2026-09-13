@@ -49,6 +49,19 @@ export interface Dictionary {
   locationDeniedOpenMap: string;
   /** Accessible label for the user's own position marker on the map. */
   userLocationLabel: string;
+  /**
+   * The collapsed "nearest sensible toilet" preview (TASK-010).
+   * `DESIGN.md` section 9.3's label and example distance/time formatting;
+   * `BRAND.md`'s "Open / closed / uncertain" and "Free / paid" copy for the
+   * two badges.
+   */
+  previewLabel: string;
+  previewDistanceUnit: string;
+  previewWalkingUnit: string;
+  previewStatusUnknown: string;
+  previewPriceFree: string;
+  previewPricePaid: string;
+  previewPriceUnknown: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -73,6 +86,13 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     locationDeniedRetry: 'SPRÓBUJ PONOWNIE',
     locationDeniedOpenMap: 'OTWÓRZ MAPĘ WARSZAWY',
     userLocationLabel: 'Twoja lokalizacja',
+    previewLabel: 'NAJBLIŻSZY SENSOWNY KIBEL',
+    previewDistanceUnit: 'M',
+    previewWalkingUnit: 'MIN PIESZO',
+    previewStatusUnknown: 'STATUS NIEPEWNY',
+    previewPriceFree: 'ZA DARMO',
+    previewPricePaid: 'PŁATNY',
+    previewPriceUnknown: 'CENA NIEZNANA',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
@@ -94,6 +114,13 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     locationDeniedRetry: 'TRY AGAIN',
     locationDeniedOpenMap: 'OPEN THE WARSAW MAP',
     userLocationLabel: 'Your location',
+    previewLabel: 'THE NEAREST TOILET WORTH USING',
+    previewDistanceUnit: 'm',
+    previewWalkingUnit: 'min walk',
+    previewStatusUnknown: 'STATUS UNKNOWN',
+    previewPriceFree: 'FREE',
+    previewPricePaid: 'PAID',
+    previewPriceUnknown: 'PRICE UNKNOWN',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },

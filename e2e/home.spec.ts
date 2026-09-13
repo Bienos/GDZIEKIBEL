@@ -1,15 +1,16 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006 smoke tests: the home page loads with the GdzieKibel.pl
- * identity, the map shell's tile fallback state (since no environment
- * available to this suite holds a real MapTiler key — see
- * docs/adr/0005-map-tile-provider.md), and the location permission flow.
+ * TASK-005/006/008/010 smoke tests: the home page loads with the
+ * GdzieKibel.pl identity, the map shell's tile fallback state (since no
+ * environment available to this suite holds a real MapTiler key — see
+ * docs/adr/0005-map-tile-provider.md), the location permission flow, the
+ * nearby-toilets fetch, and the nearest-toilet preview.
  *
- * The permission ask appears independent of tile state (see MapShell.tsx),
- * so its skip/deny/grant paths are fully testable here even though live
- * tiles are not. A live-tile smoke test belongs wherever a key is
- * configured.
+ * The permission ask, the fetch, and the preview all appear independent of
+ * tile state (see MapShell.tsx), so they are fully testable here even
+ * though live tiles are not. A live-tile smoke test belongs wherever a key
+ * is configured.
  */
 test('the bare domain serves the Polish shell with the map fallback state', async ({ page }) => {
   await page.goto('/');
@@ -164,4 +165,46 @@ test('the mount-time nearby fetch runs even without a location grant', async ({ 
   // PRODUCT.md section 6.1: manual browse must be useful without a grant.
   await expect.poll(() => requestBodies.length).toBeGreaterThanOrEqual(1);
   expect(requestBodies[0]).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
+});
+
+test('the nearest-toilet preview shows the top-ranked result, and not before the location step resolves', async ({
+  page,
+}) => {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            id: '11111111-1111-1111-1111-111111111111',
+            name: 'Toaleta Testowa',
+            lat: 52.2297,
+            lng: 21.0122,
+            distanceMeters: 239.6,
+            approxWalkingMinutes: 4,
+            openingStatus: 'UNKNOWN',
+            priceState: 'free',
+            confidenceLevel: 'low',
+            accessType: 'public_unconditional',
+            features: { wheelchair: 'unknown', changingTable: 'unknown', unisex: 'unknown' },
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto('/pl');
+
+  const preview = page.getByRole('region', { name: 'NAJBLIŻSZY SENSOWNY KIBEL' });
+  // Not shown while the location ask still covers the screen.
+  await expect(preview).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  await expect(preview).toBeVisible();
+  await expect(preview.getByText('Toaleta Testowa')).toBeVisible();
+  await expect(preview.getByText('240 M · ~4 MIN PIESZO')).toBeVisible();
+  await expect(preview.getByText('STATUS NIEPEWNY')).toBeVisible();
+  await expect(preview.getByText('ZA DARMO')).toBeVisible();
 });

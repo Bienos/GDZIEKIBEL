@@ -462,6 +462,48 @@ Not created, by design: any change to `db/queries/nearby.ts`'s SQL, a
 the API response, or a "recommended" marker visual variant — nothing
 downstream of the API yet reads or displays the new order.
 
+### TASK-010 — Nearest toilet preview
+
+Complete on 2026-09-13. Specified in `tasks/010-nearest-toilet-preview.md`.
+
+Created: `components/map/NearestToiletPreview.tsx`, a collapsed bottom card
+(`DESIGN.md` 9.3) showing the top-ranked toilet's name, a distance/ETA line
+(`lib/toilets/preview-copy.ts`'s `distanceLine`, e.g. `240 M · ~4 MIN
+PIESZO`), an opening-status badge, and a price badge. It reads `toilets[0]`
+directly — the API's own ranked order from `TASK-009` — independent of
+marker `selectedId`, matching `PRODUCT.md` section 5 step 5's "the app
+highlights the best nearby option" happening as soon as results load, not
+only once a marker is tapped. It renders once the location step resolves
+(granted or skipped), on top of either the real map or the tile fallback,
+since the underlying data does not depend on tiles.
+
+**Why there is still no CTA.** `DESIGN.md`'s collapsed state includes one,
+but neither of its two possible destinations — the detail sheet (`TASK-
+011`) or real external navigation (`TASK-012`) — exists yet. A button
+promising either without delivering it would be a dead-ended affordance;
+recorded as a deliberate, temporary gap in the task file, the same pattern
+already used for `TASK-008`'s unreachable marker variants.
+
+**Only one opening-status value is reachable, and that is not a bug.**
+`openingStatusLabel` is a `switch` over `NearbyToiletResult['openingStatus']`,
+which is currently the literal type `'UNKNOWN'` (ADR 0006); it has exactly
+one case, structured so `TASK-013` adding real states is additive. Price,
+by contrast, already varies in real ingested data (the OSM `fee` tag), so
+`priceLabel` exercises all three real values (`free`/`paid`/`unknown`).
+
+Verified: lint, format, typecheck, 127 unit tests (4 new, for the copy
+functions), 25 integration tests (unchanged), the production build, and 8
+Playwright tests (1 new) — asserting the preview is absent while the
+location ask still covers the screen, then visible with the exact
+intercepted name/distance/status/price after the user resolves that step,
+using a real request interception rather than a mock of the component
+itself.
+
+Not created, by design: a CTA button, the "recommended" marker visual
+variant (now reachable given `TASK-009`'s ranking, but a map-marker concern
+belonging with `TASK-008`'s code, not this preview card, and not asked for
+by `PLAN.md`'s TASK-010 outcome), the detail sheet, or real navigation.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -497,12 +539,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 123 tests in 18 files                          |
+| `pnpm test:unit`          | pass, 127 tests in 19 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 25 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 7 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception) |
+| `pnpm test:e2e`           | pass, 8 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview) |
 
 Also observed:
 
@@ -594,7 +636,8 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-010 — Nearest toilet preview` per `PLAN.md`: a bottom preview
-   showing the top-ranked toilet from the now-ordered nearby results
-   (`TASK-009`), its distance, approximate ETA, status and price. Needs a
-   `tasks/010-*.md` file.
+2. `TASK-011 — Toilet detail sheet` per `PLAN.md`: a usable detail sheet for
+   the selected toilet with known metadata and explicit unknown states,
+   opened from the nearest-toilet preview or a marker. Needs a
+   `tasks/011-*.md` file. `DESIGN.md` section 9.4 gives its information
+   order and CTA copy.

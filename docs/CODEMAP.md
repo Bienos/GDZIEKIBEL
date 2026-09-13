@@ -40,6 +40,11 @@ components/
                       load before its first successful load, independent of
                       that, the location ask/denied screens on mount and the
                       nearby-toilets fetch centred on the default Warsaw view
+  map/NearestToiletPreview.tsx
+                      collapsed "nearest sensible toilet" preview (TASK-010):
+                      the top-ranked (TASK-009) result's name, distance/ETA,
+                      opening-status and price badges; no CTA yet (see the
+                      task file for why)
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -77,6 +82,10 @@ lib/
                       reorders nearby results by distance + access-type
                       confidence, a named metre-penalty table (TASK-009,
                       ADR 0007); pure, no database
+  toilets/preview-copy.ts
+                      maps priceState/openingStatus to dictionary copy and
+                      formats the distance/ETA line for the nearest-toilet
+                      preview (TASK-010); pure, no React/DOM
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -154,13 +163,14 @@ Ownership:
 A Warsaw map shell renders, the location permission ask/grant/deny flow
 works, and nearby toilets fetch and render as clickable, selectable markers
 (one visual state only; see ADR 0006 and TASK-008's own notes on why). The
-nearby API now orders results by distance plus access-type confidence
-(TASK-009, ADR 0007), verified against a real PostGIS database and a real
-running production build (see PROGRESS.md); the map shell does not yet read
-or display that order — no bottom preview, filters, detail view, or
-accessible list view exists yet. No deduplication, opening-hours parsing,
-real confidence scoring, reporting, analytics or error-tracking code
-exists. Ingestion exists but has never run against the live source, and the
-map — tiles, the location dot, and the toilet markers — has never been
-visually observed rendering for real from this session. Those areas are
-owned by later tasks.
+nearby API orders results by distance plus access-type confidence (TASK-009,
+ADR 0007), verified against a real PostGIS database and a real running
+production build (see PROGRESS.md), and the map shell now shows that
+top-ranked result as a collapsed preview card (TASK-010) with its distance,
+ETA, opening-status and price badges — real values, no CTA yet. No detail
+sheet, filters, or accessible list view exists yet. No deduplication,
+opening-hours parsing, real confidence scoring, reporting, analytics or
+error-tracking code exists. Ingestion exists but has never run against the
+live source, and the map — tiles, the location dot, and the toilet markers
+— has never been visually observed rendering for real from this session.
+Those areas are owned by later tasks.
