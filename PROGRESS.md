@@ -729,6 +729,54 @@ Not created, by design: currencies beyond PLN/EUR/USD, free-text charge
 parsing (a range, "donation"), payment methods beyond cash/cards/coins,
 and any change to `price_state` itself, ranking, or opening-status work.
 
+### TASK-015 — List view
+
+Complete on 2026-09-13. Specified in `tasks/015-list-view.md`. No new ADR:
+this is a UI-composition decision reusing existing data/copy, the same
+category as `TASK-008`'s marker-variant scoping and `TASK-010`'s CTA
+deferral, not a new architecture or contract decision.
+
+Created: `components/map/ToiletListView.tsx`, an accessible `<ul>` of one
+row per toilet in the `toilets` array's own order (already the
+recommendation ranking, `TASK-009` — no separate sort). Each row reuses
+`distanceLine`, `openingStatusLabel`/`openingStatusVariant`, and
+`priceAmountLabel` unchanged (`TASK-010`/`TASK-013`/`TASK-014`), plus up to
+two feature badges — wheelchair and changing-table, the two `PRODUCT.md`
+section 6.3 actually names as filter dimensions — each shown only when its
+value is not `'unknown'`. `MapShell.tsx` gained a `viewMode` state and a
+plain-text toggle button (`LISTA`/`MAPA`, opposite corner from MapLibre's
+own `NavigationControl`) that swaps the map/fallback area for the list;
+tapping a row sets the same `selectedId` a marker click or the preview tap
+already sets, opening the identical `ToiletDetailSheet` — one selection
+mechanism, three entry points, no new detail view.
+
+**The preview is hidden in list mode.** It would otherwise duplicate the
+list's own first row (the same top-ranked toilet), showing the same
+information twice for no reason. The toggle switches what fills the map
+area only; the location ask/denied sheets and the detail sheet still
+overlay either mode unchanged.
+
+**Independent of tile state**, the same reasoning already applied to the
+fetch, the preview, and the detail sheet: the list needs only the
+`toilets` array, verified directly by a Playwright test that switches to
+list view while the tile fallback is showing (no MapTiler key in this
+suite) and gets full, real content anyway.
+
+Verified: lint, format, typecheck, 180 unit tests (unchanged — no new pure
+function was added; the component reuses existing, already-tested copy
+functions directly), 30 integration tests (unchanged), the production
+build, and 11 Playwright tests (1 new: switch to list view under the tile
+fallback, assert one row's real intercepted name/distance/status/price/
+feature-badge content, tap it, assert the identical detail sheet opens and
+focuses its heading, close it, switch back to map view).
+
+Not created, by design: filters (`TASK-016`'s job — the list shows the
+same unfiltered array the map does), payment-method badges on the compact
+card (not a `PRODUCT.md` section 6.3 filter dimension; still one tap away
+via the detail sheet), virtualisation or pagination (`MAX_NEARBY_RESULTS`
+is 30, small enough for a plain scrollable list), and any change to
+ranking, the nearby API, or the detail sheet's own content.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -769,7 +817,7 @@ before the run.
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 30 tests in 4 files                            |
-| `pnpm test:e2e`           | pass, 10 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour) |
+| `pnpm test:e2e`           | pass, 11 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view) |
 
 Also observed:
 
@@ -861,10 +909,11 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-015 — List view` per `PLAN.md`: "same result set can be used
-   without relying on map interaction." Needs a `tasks/015-*.md` file.
-   `DESIGN.md` section 9.5 and `PRODUCT.md`/`DESIGN.md` section 14's
-   accessibility requirement ("map has equivalent list representation")
-   govern it — this is the accessible fallback `TASK-008`'s own notes
-   already flagged as deferred to this task, and the last task before
-   Milestone 2's filters (`TASK-016`) need something to filter.
+2. `TASK-016 — Core filters` per `PLAN.md`: "open-now, free, wheelchair,
+   baby-changing and 24h filters work with correct unknown semantics."
+   Needs a `tasks/016-*.md` file. `DESIGN.md` section 9.6 gives the filter
+   sheet's sections (`STATUS`/`CENA`/`DOSTĘPNOŚĆ`/`UDOGODNIENIA`) and CTA
+   copy; `docs/adr/0006-nearby-api-contract.md` deliberately left the
+   request schema without a `filters` field until this task exists to give
+   it real meaning. Filters apply to both the map markers and the list
+   view (`TASK-015`) from the same filtered result set.

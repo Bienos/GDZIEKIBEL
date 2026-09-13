@@ -20,6 +20,13 @@ export interface Dictionary {
   /** Accessible name for the map region, read by screen readers. */
   mapAccessibleLabel: string;
   /**
+   * The map/list toggle (TASK-015, DESIGN.md 9.5/14): plain text button
+   * labels, and the list's own accessible landmark name.
+   */
+  viewToggleToList: string;
+  viewToggleToMap: string;
+  listAccessibleLabel: string;
+  /**
    * Fallback state shown when the tile provider key is absent or the map
    * fails to initialise. `BRAND.md`'s "API/network error" copy, two layers:
    * a punchline and a literal explanation naming the map specifically.
@@ -107,6 +114,9 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     stage: 'Fundament projektu',
     languageSwitchLabel: 'Zmień język',
     mapAccessibleLabel: 'Interaktywna mapa Warszawy',
+    viewToggleToList: 'LISTA',
+    viewToggleToMap: 'MAPA',
+    listAccessibleLabel: 'Lista toalet w pobliżu',
     mapUnavailablePunchline: 'COŚ SIĘ WYSRAŁO.',
     mapUnavailableExplanation: 'Nie udało się załadować mapy.',
     mapUnavailableRetry: 'SPRÓBUJ JESZCZE RAZ',
@@ -156,6 +166,9 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     stage: 'Project foundation',
     languageSwitchLabel: 'Change language',
     mapAccessibleLabel: 'Interactive map of Warsaw',
+    viewToggleToList: 'LIST',
+    viewToggleToMap: 'MAP',
+    listAccessibleLabel: 'List of nearby toilets',
     mapUnavailablePunchline: 'Something went wrong.',
     mapUnavailableExplanation: 'The map could not load.',
     mapUnavailableRetry: 'TRY AGAIN',

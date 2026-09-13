@@ -17,14 +17,16 @@ import { createToiletMarkerElement, setMarkerSelected } from '@/lib/toilets/mark
 import type { NearbyToiletResult } from '@/lib/toilets/nearby-response';
 import { NearestToiletPreview } from './NearestToiletPreview';
 import { ToiletDetailSheet } from './ToiletDetailSheet';
+import { ToiletListView } from './ToiletListView';
 import styles from './MapShell.module.css';
 
 /**
  * The Warsaw map shell (TASK-005), the location permission flow (TASK-006),
  * nearby toilet markers with click-to-select (TASK-008), the collapsed
  * nearest-toilet preview (TASK-010, reading the API's now-ranked order from
- * TASK-009), and the toilet detail sheet (TASK-011), opened by tapping
- * either of those. No filters, no list view — those are later tasks.
+ * TASK-009), the toilet detail sheet (TASK-011, opened by tapping either of
+ * those or a list row), and the accessible list view (TASK-015), a toggle
+ * away from the map. No filters — that is a later task.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -59,6 +61,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const [grantedCoords, setGrantedCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [toilets, setToilets] = useState<NearbyToiletResult[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const askHeadingRef = useRef<HTMLHeadingElement>(null);
   const deniedHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -233,7 +236,13 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
 
   return (
     <div className={styles.mapWrapper}>
-      {!styleUrl || tilesFailed ? (
+      {viewMode === 'list' ? (
+        <ToiletListView
+          toilets={toilets}
+          dictionary={dictionary}
+          onSelect={(id) => setSelectedId(id)}
+        />
+      ) : !styleUrl || tilesFailed ? (
         <div className={styles.fallback} role="status">
           <p className={styles.fallbackPunchline}>{dictionary.mapUnavailablePunchline}</p>
           <p className={styles.fallbackExplanation}>{dictionary.mapUnavailableExplanation}</p>
@@ -257,6 +266,14 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         />
       )}
 
+      <button
+        type="button"
+        className={styles.viewToggle}
+        onClick={() => setViewMode((mode) => (mode === 'map' ? 'list' : 'map'))}
+      >
+        {viewMode === 'map' ? dictionary.viewToggleToList : dictionary.viewToggleToMap}
+      </button>
+
       {(locationFlow === 'granted' || locationFlow === 'dismissed') &&
         (selectedToilet ? (
           <ToiletDetailSheet
@@ -265,6 +282,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
             onClose={() => setSelectedId(null)}
           />
         ) : (
+          viewMode === 'map' &&
           recommendedToilet && (
             <NearestToiletPreview
               toilet={recommendedToilet}

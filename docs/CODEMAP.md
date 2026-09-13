@@ -39,12 +39,19 @@ components/
                       when no provider key is configured or the map fails to
                       load before its first successful load, independent of
                       that, the location ask/denied screens on mount and the
-                      nearby-toilets fetch centred on the default Warsaw view
+                      nearby-toilets fetch centred on the default Warsaw view;
+                      owns the map/list `viewMode` toggle (TASK-015)
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
                       opening-status and price badges; a button — tapping it
-                      opens the detail sheet (TASK-011)
+                      opens the detail sheet (TASK-011); hidden in list view
+  map/ToiletListView.tsx
+                      accessible list view (TASK-015, DESIGN.md 9.5): every
+                      toilet, in the API's own ranked order, name/distance/
+                      ETA/status/price plus up to two feature badges (only
+                      when known); a row tap opens the same detail sheet a
+                      marker or the preview would
   map/ToiletDetailSheet.tsx
                       toilet detail sheet (TASK-011): name, distance/ETA,
                       status/price, a real navigation CTA (TASK-012),
@@ -233,12 +240,17 @@ given today's single, uncorroborated source. The price badge shows a real
 parsed amount (`2 PLN`) when a toilet's `charge` tag fits a bounded
 `<amount> <currency>` grammar (TASK-014, ADR 0010, PLN/EUR/USD only), and
 the detail sheet shows three normalised payment facts — cash, card, coin
-accepted — none fabricated. The report control still does not exist on
-the detail sheet (`TASK-020`'s job). No filters or accessible list view
-exists yet. No deduplication, real confidence scoring, reporting,
-analytics or error-tracking code exists. Ingestion exists but has never
-run against the live source — so the opening-hours and charge parsers
-have never seen a real OSM string, only constructed fixtures matching
-their documented grammars — and the map — tiles, the location dot, and
-the toilet markers — has never been visually observed rendering for real
+accepted — none fabricated. A map/list toggle (TASK-015) switches to an
+accessible list view showing the same, already-ranked `toilets` array —
+name, distance/ETA, status, price, up to two feature badges — where a row
+tap opens the identical detail sheet a marker or the preview would;
+`DESIGN.md` section 14's "map has equivalent list representation" is now
+real, not aspirational. The report control still does not exist on the
+detail sheet (`TASK-020`'s job). No filters exist yet (`TASK-016`). No
+deduplication, real confidence scoring, reporting, analytics or error-
+tracking code exists. Ingestion exists but has never run against the live
+source — so the opening-hours and charge parsers have never seen a real
+OSM string, only constructed fixtures matching their documented grammars
+— and the map — tiles, the location dot, and the toilet markers — has
+never been visually observed rendering for real
 from this session. Those areas are owned by later tasks.

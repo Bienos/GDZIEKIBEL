@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013 smoke tests: the home page loads with
- * the GdzieKibel.pl identity, the map shell's tile fallback state (since no
- * environment available to this suite holds a real MapTiler key — see
- * docs/adr/0005-map-tile-provider.md), the location permission flow, the
- * nearby-toilets fetch, the nearest-toilet preview, the toilet detail sheet
- * it opens into, that sheet's navigation CTA, and a real (non-`UNKNOWN`)
- * opening status rendering its own label and colour.
+ * TASK-005/006/008/010/011/012/013/015 smoke tests: the home page loads
+ * with the GdzieKibel.pl identity, the map shell's tile fallback state
+ * (since no environment available to this suite holds a real MapTiler key
+ * — see docs/adr/0005-map-tile-provider.md), the location permission flow,
+ * the nearby-toilets fetch, the nearest-toilet preview, the toilet detail
+ * sheet it opens into, that sheet's navigation CTA, a real (non-`UNKNOWN`)
+ * opening status rendering its own label and colour, and the map/list
+ * toggle.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -325,4 +326,71 @@ test('a real OPEN status renders its own label and colour, not the uncertain one
   await expect(statusBadge).toBeVisible();
   // --status-open (--color-status-green: #9bea88), not the uncertain orange.
   await expect(statusBadge).toHaveCSS('background-color', 'rgb(155, 234, 136)');
+});
+
+test('the list view shows the same toilet, independent of the map, and opens the same detail sheet', async ({
+  page,
+}) => {
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            id: '33333333-3333-3333-3333-333333333333',
+            name: 'Toaleta Listowa',
+            lat: 52.2297,
+            lng: 21.0122,
+            distanceMeters: 180,
+            approxWalkingMinutes: 3,
+            openingStatus: 'CLOSED',
+            priceState: 'free',
+            priceAmountMinor: null,
+            currency: null,
+            confidenceLevel: 'low',
+            accessType: 'public_unconditional',
+            features: { wheelchair: 'yes', changingTable: 'unknown', unisex: 'unknown' },
+            paymentMethods: { cash: 'unknown', cards: 'unknown', coins: 'unknown' },
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  // Map fallback is showing (no MapTiler key in this suite); the toggle
+  // works regardless.
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'LISTA' }).click();
+
+  const list = page.getByRole('list', { name: 'Lista toalet w pobliżu' });
+  await expect(list).toBeVisible();
+  // The collapsed preview does not duplicate the list's own first row.
+  await expect(
+    page.getByRole('button', { name: 'Otwórz szczegóły toalety: Toaleta Listowa' }),
+  ).toHaveCount(1);
+
+  const row = list.getByRole('listitem').first();
+  await expect(row.getByText('Toaleta Listowa')).toBeVisible();
+  await expect(row.getByText('180 M · ~3 MIN PIESZO')).toBeVisible();
+  await expect(row.getByText('ZAMKNIĘTY')).toBeVisible();
+  await expect(row.getByText('ZA DARMO')).toBeVisible();
+  await expect(row.getByText('DOSTĘP DLA WÓZKÓW: TAK')).toBeVisible();
+
+  await row.getByRole('button').click();
+
+  const heading = page.getByRole('heading', { name: 'Toaleta Listowa' });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+
+  await page.getByRole('button', { name: 'ZAMKNIJ' }).click();
+  await expect(heading).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'MAPA' }).click();
+  await expect(list).toHaveCount(0);
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
 });
