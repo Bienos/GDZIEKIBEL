@@ -72,7 +72,10 @@ Ownership:
 - `docs/adr/0001-foundation-stack.md` — package manager, runtime, migration
   tooling, test runners, styling approach.
 - `docs/adr/0002-locale-in-the-url.md` — why the locale is a route segment.
-- `docs/contracts/` — empty; no cross-layer contract exists yet.
+- `docs/adr/0003-first-data-source.md` — OpenStreetMap first, city dataset
+  deferred, field-level source table, consequences for the schema.
+- `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
+  shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
   see `docs/research/README.md`.
 

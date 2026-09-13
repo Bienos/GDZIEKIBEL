@@ -41,7 +41,8 @@ tooling decisions.
 
 ### TASK-002 — Data-source research and source decision
 
-Not complete. Desk research was supplied by the project owner on 2026-09-13 and
+Decision made and recorded; observation gaps remain and are listed below. Desk
+research was supplied by the project owner on 2026-09-13 and
 is committed verbatim at `docs/research/2026-09-13-warsaw-toilet-sources.md`.
 The task specification exists at `tasks/002-data-source-research.md`.
 
@@ -110,6 +111,35 @@ What this costs, from the research: the city's private-venue agreements,
 official opening hours for municipal toilets, and the metro rule as an official
 record. The schema in TASK-003 keeps source records separate from the canonical
 toilet, so adding the city later is additive rather than a rebuild.
+
+**Deliverables written on 2026-09-13**, from a session whose egress denies
+every OpenStreetMap and Warsaw host, so nothing in them was observed live from
+that session:
+
+- `docs/contracts/osm-toilets-source.md`: acquisition, area, element shape,
+  identity, change detection, field mapping with unknown semantics, validation
+  rules, and what the source does not provide. Every statement is marked
+  OBSERVED, DECIDED or UNVERIFIED.
+- `docs/adr/0003-first-data-source.md`: OpenStreetMap first, weekly bounded
+  Overpass pull with an extract fallback, Warsaw administrative boundary as the
+  area, a hand-curated anchor layer for metro and stations, the city dataset
+  deferred with its evidence, a field-level source table, and the consequences
+  for the TASK-003 schema.
+
+**Still unverified, and what closes each:**
+
+| Item | Closes when |
+| --- | --- |
+| `amenity=toilets` count in the probe bbox | `pnpm research:probe -- --full` from the GdzieKibel environment; paste the value and query into ADR 0003 section 6 |
+| `toilets=*` venue count | same run |
+| Tag coverage for opening hours, fee, access, wheelchair, changing table, operator, name, level | same run |
+| ODbL name, version and attribution wording, quoted and dated | a live read of the Legal FAQ and the OSMF attribution guidelines |
+| Share-alike design choice | legal review; the schema keeps both designs open meanwhile |
+| Warsaw administrative boundary relation id | TASK-004 |
+
+The one run that returned HTTP 200 from Overpass on 2026-09-13 produced a
+count, but the value was not carried into the repository. It is not recorded
+here because it was not seen here.
 
 ### Owner-directed additions outside the task sequence
 
@@ -182,7 +212,12 @@ Also observed:
 
 ## Known unresolved decisions
 
-- Final Warsaw toilet data source(s) and licences.
+- Warsaw city open-data toilet dataset: deferred, unobserved. See ADR 0003
+  section 4.
+- OpenStreetMap licence text and attribution wording: cited by the research,
+  not yet read live and quoted.
+- Whether the product database is a Derivative Database under ODbL share-alike:
+  flagged for legal review; the schema keeps both designs open.
 - Final production map tile provider.
 - Final analytics provider.
 - Real-data deduplication thresholds.
@@ -192,6 +227,10 @@ These are intentionally unresolved and must not be silently treated as facts.
 Resolved by TASK-001: the migration/schema tooling choice is now
 `node-pg-migrate` with plain SQL files, recorded in
 `docs/adr/0001-foundation-stack.md`.
+
+Resolved by TASK-002: the first data source is OpenStreetMap, acquired by a
+weekly bounded Overpass pull, recorded in `docs/adr/0003-first-data-source.md`
+and `docs/contracts/osm-toilets-source.md`.
 
 ## Unresolved blockers
 
@@ -218,8 +257,10 @@ Not verifiable in this environment, and therefore not claimed:
 
 ## Next approved task
 
-`TASK-002 — Data-source research and source decision`. Specified in
-`tasks/002-data-source-research.md`, rewritten around OpenStreetMap as the first
-source. No longer blocked: the network is available from the GdzieKibel cloud
-environment and Overpass has answered. Remaining work is the licence reading,
-the coverage counts and the source decision.
+`TASK-003 — Canonical toilet schema + first source contract` per `PLAN.md`.
+Not yet specified; a `tasks/003-*.md` file must be written first. Its inputs
+are ADR 0003 section 7 and the contract's sections 4 to 7.
+
+TASK-002 remains open only for the observation gaps in its table above. They do
+not block TASK-003, which designs for unknowns regardless of what the counts
+turn out to be.
