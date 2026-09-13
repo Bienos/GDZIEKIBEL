@@ -32,11 +32,12 @@ app/
                       (TASK-016, ADR 0011) and reordered by
                       rankNearbyToilets (TASK-009)
   api/toilets/[id]/reports/route.ts
-                      POST only; a validated, anonymous report (TASK-020,
-                      ADR 0015): 400 for a malformed id or invalid body,
-                      404 for a well-formed but unknown toilet id, 201 with
-                      the created report's id on success; no rate-limiting
-                      (TASK-021's job)
+                      POST only; a validated, anonymous, rate-limited
+                      report (TASK-020 ADR 0015, TASK-021 ADR 0016): the
+                      rate limit is checked first (429 with Retry-After
+                      over 5/hour per hashed IP), then 400 for a malformed
+                      id or invalid body, 404 for a well-formed but unknown
+                      toilet id, 201 with the created report's id on success
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -190,6 +191,11 @@ lib/
   reports/submit-report.ts
                       client-side call to POST /api/toilets/:id/reports;
                       never throws; a blank note is omitted, never sent as ''
+  reports/rate-limit.ts
+                      the report endpoint's rate limiter (TASK-021, ADR
+                      0016): one-hour fixed window, 5 requests, a SHA-256
+                      hash of the client's IP (never the raw address); pure
+                      window/key logic plus x-forwarded-for extraction
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
@@ -210,6 +216,10 @@ db/
   queries/reports.ts  toiletExists and insertReport (TASK-020, ADR 0015);
                       thin, source-agnostic, no location/IP/device data ever
                       written
+  queries/report-rate-limit.ts
+                      checkAndIncrementRateLimit (TASK-021, ADR 0016): one
+                      atomic INSERT ... ON CONFLICT ... RETURNING, prunes
+                      windows older than the retention cutoff first
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -221,6 +231,8 @@ db/
     *_add-toilet-reports.sql
                       adds toilet_reports, toilet_report_issue_type,
                       toilet_report_status (TASK-020, ADR 0015)
+    *_add-report-rate-limit.sql
+                      adds report_rate_limit_windows (TASK-021, ADR 0016)
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -310,6 +322,10 @@ Ownership:
   before insert rather than a raw FK violation; `status` exists with a
   default but nothing reads it yet; no rate-limiting or abuse metadata
   (`TASK-021`'s job); no location, IP, or device identifier ever stored.
+- `docs/adr/0016-report-rate-limiting.md` — Postgres, not Redis or an
+  external provider, resolving `ARCHITECTURE.md` section 23's open
+  question; a SHA-256 hash of the client IP, never the raw address; a
+  fixed one-hour window, five writes, pruned on every request.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -379,9 +395,15 @@ optional note, `POST /api/toilets/:id/reports` checks the toilet exists
 before inserting, and the stored row carries no location, IP, or device
 identifier — verified with a real curl smoke test against a running
 production build and a real PostGIS database, insert/404/400 all
-observed. No moderation UI reads `toilet_reports.status` yet, and no
-rate-limiting exists (`TASK-021`'s job). No deduplication, analytics or
-error-tracking code exists. Ingestion exists but has never run against the
+observed. The endpoint is now also rate-limited (TASK-021, ADR 0016): a
+real Postgres-backed counter, keyed to a SHA-256 hash of the client's IP
+(never the raw address) and a one-hour window, rejects a sixth report
+from the same client within the hour with `429` and a `Retry-After`
+header — verified the same way, a real curl sequence against a running
+production build crossing the limit and a different IP staying
+unaffected. No moderation UI reads `toilet_reports.status` yet. No
+deduplication, analytics or error-tracking code exists. Ingestion exists
+but has never run against the
 live source — so the opening-hours and charge parsers, and the confidence
 computation, have never seen a real OSM string, only constructed fixtures
 matching their documented grammars — and the map — tiles, the location

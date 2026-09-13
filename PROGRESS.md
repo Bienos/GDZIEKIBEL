@@ -1127,6 +1127,77 @@ any way for a report to rewrite canonical `toilets` data, and the detail
 sheet's still-missing "hours" line (`TASK-011`'s own, separate, unrelated
 gap).
 
+### TASK-021 — Report abuse protection
+
+Complete on 2026-09-13. Specified in `tasks/021-report-abuse-protection.md`;
+decision recorded in `docs/adr/0016-report-rate-limiting.md`.
+
+**Answered the open design question, not deferred it again.**
+`ARCHITECTURE.md` section 23 explicitly listed "whether report rate
+limiting needs an external store/provider" as unresolved, and section 21
+treats Redis as a non-goal "without evidence." An in-memory counter would
+not actually work on the stated Vercel/serverless deployment target
+(`ARCHITECTURE.md` section 22) — it would not coordinate across function
+instances or survive a cold start, so it would look implemented without
+functioning. Postgres (Neon), already provisioned and already this
+project's one source of truth, holds the counter instead: no new external
+service, no new dependency.
+
+**A one-way hash, never the raw IP.** `PLAN.md`'s own phrase, "without
+storing unnecessary personal data," ruled out logging or retaining a raw
+IP address. `lib/reports/rate-limit.ts`'s `hashClientKey` SHA-256-hashes
+the address read from `x-forwarded-for` (the header Vercel's edge network
+sets — read directly, no `@vercel/functions` dependency, which only wraps
+the same header) before it is ever written; only the hash and a count
+reach the database. The hash is unsalted, a known first-pass limitation
+recorded in the ADR's "Not decided here," not a silent gap.
+
+**A fixed one-hour window, five writes, pruned on every request.** Simpler
+than a sliding window or token bucket, and `PLAN.md`'s "measured...
+controls" does not ask for precision at a window's edges. Counted
+per-client across every toilet id, not per toilet — `ARCHITECTURE.md`'s
+own phrase is "report endpoint spam," an endpoint-level threat.
+`checkAndIncrementRateLimit` deletes windows older than the 24-hour
+retention cutoff before every increment, so the table never accumulates
+more than about a day's worth of counters, and uses one atomic `INSERT ...
+ON CONFLICT ... RETURNING` rather than a separate read-then-write, so
+concurrent requests from the same client cannot both read a count under
+the limit and both proceed.
+
+Created: a migration adding `report_rate_limit_windows` (`client_key`,
+`window_start`, `request_count`). `lib/reports/rate-limit.ts`
+(`hashClientKey`, `extractClientIp`, `rateLimitWindowStart`,
+`rateLimitRetentionCutoff`, `secondsUntilWindowEnds`,
+`RATE_LIMIT_MAX_REQUESTS_PER_WINDOW`; pure, no database).
+`db/queries/report-rate-limit.ts` (`checkAndIncrementRateLimit`).
+`app/api/toilets/[id]/reports/route.ts` now checks the rate limit first,
+before the id or body are even parsed, returning `429` with a
+`Retry-After` header over the limit.
+
+Verified: lint, format, typecheck, 236 unit tests (11 new —
+`rateLimitWindowStart`/`rateLimitRetentionCutoff`/`secondsUntilWindowEnds`
+at their boundaries, `hashClientKey`'s determinism and that it never
+contains the raw IP as a substring, `extractClientIp`'s
+`x-forwarded-for`-chain parsing), 39 integration tests (3 new: a real
+sequence of writes against a real database showing the count increment
+cumulatively and a sixth write exceed the documented limit, a different
+client key getting its own independent count, and a stale row actually
+being deleted by the pruning step, not merely ignored), the production
+build, and a real curl smoke test against a running production build and
+a real database: five spoofed-IP report submissions in a row succeeded
+(`201`), the sixth and seventh returned `429` with a `Retry-After` header,
+a different spoofed IP succeeded unaffected, and the `report_rate_limit_windows`
+table was independently queried afterward to confirm it held only the
+SHA-256 hash and a count — never the literal IP strings used in the test.
+All 18 pre-existing Playwright tests still pass unmodified; no new E2E
+coverage, since this task adds no UI and every existing report-flow test
+already mocks the endpoint.
+
+Not created, by design: any external rate-limiting store or provider
+(Redis or otherwise), a salted hash (left as a documented, revisitable
+first-pass gap), CAPTCHA or proof-of-work, and any change to `TASK-020`'s
+report schema or its contract for a client under the limit.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1162,11 +1233,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 225 tests in 30 files                          |
+| `pnpm test:unit`          | pass, 236 tests in 31 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 36 tests in 5 files                            |
+| `pnpm test:integration`   | pass, 39 tests in 6 files                            |
 | `pnpm test:e2e`           | pass, 18 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, and the report flow's success and failure/retry states) |
 
 Also observed:
@@ -1259,25 +1330,33 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-021 — Report abuse protection` per `PLAN.md`: "report endpoint has
-   measured rate/abuse controls without storing unnecessary personal
-   data." Needs a `tasks/021-*.md` file. `ARCHITECTURE.md` section 16
-   already lists "report endpoint spam" as an MVP threat priority and
-   "rate limiting for report writes" as a required control; section 20
-   names "report rate-limit provider key only if one is adopted" as a
-   possible environment variable, and section 23's own "decisions still
-   requiring validation" explicitly flags "whether report rate limiting
-   needs an external store/provider" as unresolved — this is the real
-   design question to settle first: an in-memory/per-instance limiter
-   (simplest, but resets on redeploy and does not coordinate across
-   serverless instances) versus an external store (Redis, a Postgres
-   table, or a provider) that actually holds up under Vercel's deployment
-   model. `docs/adr/0015-toilet-reports.md`'s own "Not decided here"
-   territory names this exact gap. `ARCHITECTURE.md` section 21 rules out
-   Redis "for ordinary reads" as a non-goal without evidence — whether a
-   report rate limiter counts as evidence enough is this task's first
-   real decision, not something to default into. Keep the abuse-control
-   surface itself minimal (per-IP or a coarse fingerprint, whichever
-   privacy discipline (`PRODUCT.md` section 14, "no unnecessary personal
-   data") actually allows) rather than reusing `TASK-020`'s already-
-   deferred, not-yet-designed metadata columns without re-examining them.
+2. `TASK-022 — Second data source + deduplication` per `PLAN.md`
+   (Milestone 4 — Product quality begins here): "a second validated source
+   can be ingested without creating obvious duplicate toilets; ambiguous
+   matches are surfaced for review." Needs a `tasks/022-*.md` file. This
+   is the task `docs/adr/0003-first-data-source.md` section 4 deferred
+   from the start ("the Warsaw city open-data toilet dataset... a
+   deferral, not an evaluation") and the one every prior ADR's "not yet
+   corroborated" language has been waiting for (`docs/adr/0009`,
+   `docs/adr/0014`'s own "HIGH stays unreachable until `TASK-022`").
+   `ARCHITECTURE.md` section 14 sketches the matching approach (nearby
+   spatial candidate match, compare normalised name/address/identifiers,
+   auto-merge only above a conservative threshold, flag ambiguous
+   candidates for review, preserve every original source record) but is
+   explicit that "a future ADR should record final matching rules after
+   source research" and that exact thresholds must not be hard-coded
+   before inspecting real datasets. This session's own environment has
+   never had egress to Warsaw or OpenStreetMap hosts (recorded under
+   "Unresolved blockers" below) — a session with real access is needed to
+   evaluate an actual second source (the Warsaw city open-data toilet
+   dataset PRODUCT.md/ADR 0003 name as the obvious candidate) before any
+   matching threshold can be more than a guess. If no such session is
+   available, the matching *logic* (candidate matching, threshold
+   application, review-flagging) can still be built and tested against
+   two synthetic/fixture sources feeding the existing `toilet_source_records`
+   table, the same "implement the real logic, prove it with fixtures,
+   document the live-data gap honestly" pattern already used throughout
+   this project (openinghours/charge parsing, TASK-019's confidence
+   computation) — but a real second source should not be invented to
+   force progress; the ADR should say plainly which path was taken and
+   why.
