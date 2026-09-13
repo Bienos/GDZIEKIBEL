@@ -66,6 +66,10 @@ Also observed:
   rather than failing or reporting a fabricated pass.
 - Running `pnpm build` after `pnpm format` leaves `tsconfig.json` unchanged, so
   Next.js and Prettier do not fight over that file.
+- A clean `git clone` of the pushed branch builds with the exact commands
+  `vercel.json` pins (`pnpm install --frozen-lockfile`, then `pnpm build`) with
+  `DATABASE_URL` unset. This confirms the lazy environment validation does not
+  break a deployment build.
 
 ## Observed facts worth recording
 
@@ -101,7 +105,10 @@ None for TASK-001.
 Not verifiable in this environment, and therefore not claimed:
 
 - No Vercel preview deployment was created; the deployment path is documented
-  but unexercised.
+  but unexercised. The Vercel integration available to this session reports no
+  team, and linking a git project is refused without a team ID, so the
+  deployment could not be created or inspected from here. Direct network access
+  to Vercel hosts is also blocked by the environment's egress policy.
 - CI has not been observed running on GitHub; the workflow is untested there.
 
 ## Next approved task
