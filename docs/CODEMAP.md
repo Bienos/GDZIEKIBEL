@@ -69,7 +69,12 @@ Ownership:
 
 - `docs/adr/0001-foundation-stack.md` — package manager, runtime, migration
   tooling, test runners, styling approach.
-- `docs/contracts/` — empty; no cross-layer contract exists yet.
+- `docs/adr/0002-toilet-data-sources.md` — first ingestion sources, OSM
+  licence/share-alike position, extract-not-live decision, field-level source
+  table, city-dataset blocker.
+- `docs/contracts/toilet-sources.md` — normalised source record and per-source
+  mapping the ingestion adapters consume (OSM, metro rule, curated hubs; city
+  dataset reserved).
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
   see `docs/research/README.md`.
 

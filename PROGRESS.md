@@ -41,22 +41,60 @@ tooling decisions.
 
 ### TASK-002 — Data-source research and source decision
 
-Not complete. Desk research was supplied by the project owner on 2026-09-13 and
-is committed verbatim at `docs/research/2026-09-13-warsaw-toilet-sources.md`.
-The task specification exists at `tasks/002-data-source-research.md`.
+Verification run on 2026-09-13 (11:53–12:15 UTC) from a sandboxed agent
+environment. Everything observed is recorded, with URL and time, in
+`docs/research/2026-09-13-task-002-live-observations.md`. Outputs:
 
-The research states in its own limitations section that the Warsaw open-data
-toilet dataset endpoint, schema and licence were not verified against the live
-service. That verification is the remaining work and has not been done.
+- `docs/adr/0002-toilet-data-sources.md` — source decision, OSM licence and
+  share-alike position (flagged for legal review), periodic extract instead of
+  live Overpass, Warsaw area = OSM relation 336074, metro rule, curated hub
+  layer, field-level source table, licence compatibility conclusion.
+- `docs/contracts/toilet-sources.md` — normalised source record and the
+  mapping for the `osm`, `metro-rule` and `hub-curated` adapters; `warsaw-city`
+  reserved but not contracted.
+- `docs/research/README.md` and `docs/CODEMAP.md` updated for the new files.
 
-A probe that performs the observable part of it exists at
-`scripts/research/probe-sources.ts`, run with `pnpm research:probe`. Observed on
-2026-09-13: every request it makes is refused from this environment with HTTP
-403 at the egress proxy, and the script reports that as a blocker and exits
-non-zero rather than producing a result. Its success path has therefore never
-run. Its parsers are covered by nine unit tests against recorded response
-shapes, which assert that a missing licence reads as null and that a malformed
-payload yields nothing.
+Observed:
+
+- Reachable: `warszawa19115.pl`, `overpass-api.de`, `wiki.openstreetmap.org`,
+  `www.openstreetmap.org`, `osmfoundation.org`, `pkp.pl`.
+- Unreachable: `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`
+  (proxy opens the tunnel, TLS handshake reset by peer on every attempt;
+  HTTP 503 via the probe and via a second fetch path). Blocked at the proxy
+  (HTTP 403 to CONNECT): `um.warszawa.pl`, `mapa.um.warszawa.pl`,
+  `metro.waw.pl`, `opendatacommons.org`, `dane.gov.pl`,
+  `download.geofabrik.de`, every public Overpass instance other than
+  `overpass-api.de`.
+- `pnpm research:probe -- --full`: all 16 catalogue requests HTTP 503; the
+  three Overpass requests HTTP 503 (Node `fetch` through the proxy); script
+  exited non-zero, as designed. Overpass was subsequently reached with `curl`
+  GET requests.
+- OSM `amenity=toilets` inside relation 336074: 562 (448 nodes, 114 ways),
+  data timestamp 2026-09-13T12:01:20Z. Bounding-box fallbacks: 604
+  `amenity=toilets`, 224 features with any `toilets=*` tag. Tag coverage
+  over the 604: `fee` 70%, `wheelchair` 68%, `changing_table` 44%, `access`
+  32%, `opening_hours` 27%, `name` 0.8%.
+- Overpass main instance returned HTTP 429 once and HTTP 504 "server is
+  probably too busy" on most area queries; every other public instance was
+  blocked. The egress relay cuts responses slower than about ten seconds.
+- Metro rule read from the 19115 page (updated 2026-09-10): all stations,
+  daily 06:00–22:00, free, outside the ticket zone.
+- PKP: no structured feed found; toilet facts observed for Warszawa
+  Zachodnia, Wschodnia and Centralna; ten further Warsaw stations listed with
+  no toilet fact observed.
+- OSM licence, attribution guidelines and the Collective Database, Horizontal
+  Layers, Substantial, Produced Work and Trivial Transformations guidelines
+  read and quoted at source. The ODbL legal text itself could not be fetched.
+
+Decision: TASK-004 ingests OSM (periodic extract) plus the metro rule and the
+curated hub layer. The Warsaw city dataset is **not** a first source, because
+none of its ten acceptance items could be observed and an unverified licence
+blocks ingestion. It remains the intended authoritative source for city-listed
+facilities once verified.
+
+Repository checks after the change: `pnpm lint`, `pnpm format:check`,
+`pnpm typecheck` and `pnpm test:unit` (23 tests, 3 files) all pass on
+2026-09-13. No application code, schema or dependency changed.
 
 ## Verification at current baseline
 
@@ -106,7 +144,12 @@ Also observed:
 
 ## Known unresolved decisions
 
-- Final Warsaw toilet data source(s) and licences.
+- Warsaw city toilet dataset: identifier, endpoint, schema, count, cadence,
+  licence, pagination, deletion semantics, timestamps and status field are
+  all unobserved (TASK-002 blocker below). Which service to consume when
+  reachable is decided: `dane.um.warszawa.pl`.
+- OSM share-alike reach: ADR 0002 takes the conservative reading (toilet
+  layer is an ODbL Derivative Database) and flags it for legal review.
 - Final production map tile provider.
 - Final analytics provider.
 - Real-data deduplication thresholds.
@@ -117,7 +160,22 @@ Resolved by TASK-001: the migration/schema tooling choice is now
 `node-pg-migrate` with plain SQL files, recorded in
 `docs/adr/0001-foundation-stack.md`.
 
+Resolved by TASK-002: first ingestion sources (OSM extract, metro rule,
+curated hub layer), Warsaw area definition (OSM relation 336074), periodic
+extract rather than live Overpass, and the field-level source table, recorded
+in `docs/adr/0002-toilet-data-sources.md`.
+
 ## Unresolved blockers
+
+TASK-002, one blocker: the Warsaw city toilet dataset could not be verified.
+On 2026-09-13 `dane.um.warszawa.pl`, `api.um.warszawa.pl` and
+`iot.warszawa.pl` reset the TLS handshake on every attempt from the agent
+environment (previous environment: HTTP 403 at the proxy). Nothing about the
+dataset was observed. Until the ten items in
+`tasks/002-data-source-research.md` ("Warsaw city open data") are observed
+from a network that can reach those hosts, no city adapter is written and no
+product field is sourced from the city. `pnpm research:probe` is the
+re-verification tool; its output goes to the gitignored `.research-output/`.
 
 None for TASK-001.
 
@@ -129,14 +187,13 @@ Not verifiable in this environment, and therefore not claimed:
   deployment could not be created or inspected from here. Direct network access
   to Vercel hosts is also blocked by the environment's egress policy.
 - CI has not been observed running on GitHub; the workflow is untested there.
-- The TASK-002 source verification could not be started from this environment.
-  On 2026-09-13 the egress proxy answered HTTP 403 to CONNECT for
-  `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
-  `warszawa19115.pl` and `overpass-api.de`. No Warsaw or OpenStreetMap value has
-  been observed, so none is recorded as fact.
+- The TASK-002 verification of the Warsaw city dataset (see blocker above).
+  The OSM, 19115 and PKP parts of TASK-002 were observed on 2026-09-13 from a
+  later environment that could reach those hosts.
 
 ## Next approved task
 
-`TASK-002 — Data-source research and source decision`. Specified in
-`tasks/002-data-source-research.md`. Blocked on network access to the Warsaw and
-OpenStreetMap services, which this environment denies.
+`TASK-003 — Canonical toilet schema + first source contract`, per `PLAN.md`.
+Its input is `docs/contracts/toilet-sources.md` and ADR 0002. The TASK-002
+city-dataset blocker does not stop TASK-003 or the OSM part of TASK-004; it
+stops only the city adapter.
