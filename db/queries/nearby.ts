@@ -22,8 +22,9 @@ interface NearbyRow {
   price_state: NearbyToiletRow['priceState'];
   price_amount_minor: NearbyToiletRow['priceAmountMinor'];
   currency: NearbyToiletRow['currency'];
-  confidence_level: NearbyToiletRow['confidenceLevel'];
+  verified_at: NearbyToiletRow['verifiedAt'];
   access_type: NearbyToiletRow['accessType'];
+  access_raw: NearbyToiletRow['accessRaw'];
   wheelchair: NearbyToiletRow['wheelchair'];
   changing_table: NearbyToiletRow['changingTable'];
   unisex: NearbyToiletRow['unisex'];
@@ -46,8 +47,9 @@ export async function findNearbyToilets(
        price_state,
        price_amount_minor,
        currency,
-       confidence_level,
+       verified_at,
        access_type,
+       access_raw,
        wheelchair,
        changing_table,
        unisex,
@@ -71,8 +73,9 @@ export async function findNearbyToilets(
     priceState: row.price_state,
     priceAmountMinor: row.price_amount_minor,
     currency: row.currency,
-    confidenceLevel: row.confidence_level,
+    verifiedAt: row.verified_at,
     accessType: row.access_type,
+    accessRaw: row.access_raw,
     wheelchair: row.wheelchair,
     changingTable: row.changing_table,
     unisex: row.unisex,

@@ -12,8 +12,9 @@ const baseRow: NearbyToiletRow = {
   priceState: 'unknown',
   priceAmountMinor: null,
   currency: null,
-  confidenceLevel: 'low',
+  verifiedAt: null,
   accessType: 'unknown',
+  accessRaw: null,
   wheelchair: 'unknown',
   changingTable: 'unknown',
   unisex: 'unknown',
@@ -28,14 +29,12 @@ describe('toNearbyResult', () => {
       {
         ...baseRow,
         priceState: 'free',
-        confidenceLevel: 'high',
         accessType: 'public_unconditional',
       },
       NOW,
     );
 
     expect(result.priceState).toBe('free');
-    expect(result.confidenceLevel).toBe('high');
     expect(result.accessType).toBe('public_unconditional');
   });
 
@@ -43,13 +42,50 @@ describe('toNearbyResult', () => {
     expect(toNearbyResult(baseRow, NOW).openingStatus).toBe('UNKNOWN');
   });
 
-  it('computes a real status from the row, wiring open24h and confidenceLevel through', () => {
-    // Real computation (LIKELY_OPEN, not OPEN, since confidence is 'low')
-    // is computeOpeningStatus's own job to prove exhaustively; this only
-    // proves toNearbyResult actually passes the row's fields to it.
-    const result = toNearbyResult({ ...baseRow, open24h: true, confidenceLevel: 'low' }, NOW);
+  it('computes a real status from the row, wiring open24h and the computed confidence through', () => {
+    // Real computation (LIKELY_OPEN, not OPEN, since nothing here reaches
+    // 'high' confidence) is computeOpeningStatus's own job to prove
+    // exhaustively; this only proves toNearbyResult actually passes the
+    // computed confidence to it.
+    const result = toNearbyResult({ ...baseRow, open24h: true }, NOW);
 
     expect(result.openingStatus).toBe('LIKELY_OPEN');
+  });
+
+  it('computes MEDIUM confidence from a recent verification with a non-uncertain access basis (TASK-019)', () => {
+    const result = toNearbyResult(
+      { ...baseRow, verifiedAt: new Date('2026-06-01'), accessRaw: 'yes' },
+      NOW,
+    );
+
+    expect(result.confidenceLevel).toBe('medium');
+  });
+
+  it('keeps LOW confidence for an uncertain access basis, even with a recent verification', () => {
+    const result = toNearbyResult(
+      { ...baseRow, verifiedAt: new Date('2026-06-01'), accessRaw: 'permissive' },
+      NOW,
+    );
+
+    expect(result.confidenceLevel).toBe('low');
+  });
+
+  it('keeps LOW confidence for a stale verification', () => {
+    const result = toNearbyResult(
+      { ...baseRow, verifiedAt: new Date('2020-01-01'), accessRaw: 'yes' },
+      NOW,
+    );
+
+    expect(result.confidenceLevel).toBe('low');
+  });
+
+  it('never reaches HIGH confidence: a single source is never enough (docs/adr/0014)', () => {
+    const result = toNearbyResult(
+      { ...baseRow, verifiedAt: new Date('2026-09-14'), accessRaw: 'yes' },
+      NOW,
+    );
+
+    expect(result.confidenceLevel).not.toBe('high');
   });
 
   it('keeps limited distinct from yes and from unknown, never collapsing it to a boolean', () => {

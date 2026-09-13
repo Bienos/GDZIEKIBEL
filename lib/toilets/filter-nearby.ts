@@ -1,3 +1,4 @@
+import { computeConfidenceLevel } from './compute-confidence';
 import { computeOpeningStatus } from '../opening-hours/compute-status';
 import type { NearbyToiletRow } from './nearby-response';
 import type { FeatureState, PriceState } from './types';
@@ -53,9 +54,13 @@ export function filterNearbyToilets(
   now: Date,
 ): NearbyToiletRow[] {
   return rows.filter((row) => {
+    const confidenceLevel = computeConfidenceLevel(
+      { verifiedAt: row.verifiedAt, accessRaw: row.accessRaw },
+      now,
+    );
     const status = computeOpeningStatus(
       { open24h: row.open24h, openingHoursNormalized: row.openingHoursNormalized },
-      row.confidenceLevel,
+      confidenceLevel,
       now,
     );
     return matchesFilters(

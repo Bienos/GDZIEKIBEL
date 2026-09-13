@@ -285,6 +285,33 @@ describe.skipIf(!hasDatabaseUrl)('ingestion upsert', () => {
     expect(toilet.rows[0]?.payment_methods).toEqual({ cash: 'no', cards: 'yes', coins: 'unknown' });
   });
 
+  it('writes access_raw and verified_at (TASK-019) to the canonical toilet', async () => {
+    await withTransaction((client) =>
+      upsertSourceRecords(
+        client,
+        SOURCE,
+        [
+          record({
+            sourceRecordId: 'node/1',
+            accessRaw: 'permissive',
+            sourceVerifiedAt: '2026-08-01',
+          }),
+        ],
+        new Date(),
+      ),
+    );
+
+    const toilet = await getPool().query<{ access_raw: string | null; verified_at: Date | null }>(
+      `SELECT t.access_raw, t.verified_at FROM toilets t
+         JOIN toilet_source_records s ON s.toilet_id = t.id
+        WHERE s.source_name = $1`,
+      [SOURCE],
+    );
+
+    expect(toilet.rows[0]?.access_raw).toBe('permissive');
+    expect(toilet.rows[0]?.verified_at?.toISOString().slice(0, 10)).toBe('2026-08-01');
+  });
+
   it('stores the normalised payload and never an OSM username', async () => {
     await withTransaction((client) =>
       upsertSourceRecords(client, SOURCE, [record({ sourceRecordId: 'node/1' })], new Date()),

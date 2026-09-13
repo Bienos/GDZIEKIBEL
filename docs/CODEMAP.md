@@ -118,7 +118,14 @@ lib/
                       computeOpeningStatus, given an explicit `now` (TASK-013);
                       paymentMethods is never null in the response — a null
                       row value becomes all-unknown (TASK-014); open24h is
-                      also exposed, the raw fact TASK-016's filter reads
+                      also exposed, the raw fact TASK-016's filter reads;
+                      confidenceLevel is now computed by
+                      computeConfidenceLevel from verifiedAt/accessRaw, the
+                      same `now` (TASK-019, ADR 0014), not a stored column
+  toilets/compute-confidence.ts
+                      computes confidence_level (never 'high') from
+                      verified_at freshness and a non-uncertain access basis
+                      (TASK-019, ADR 0014); pure, no database
   toilets/fetch-nearby.ts
                       client-side call to the nearby API; never throws;
                       omits the `filters` key entirely when none is active
@@ -163,21 +170,28 @@ lib/
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
-                      normalised payment_methods since TASK-014
+                      normalised payment_methods since TASK-014, and
+                      access_raw since TASK-019 (ADR 0014)
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
                       (normalize.ts derives opening-hours fields since
-                      TASK-013, and charge/payment-method fields since TASK-014)
+                      TASK-013, and charge/payment-method fields since TASK-014;
+                      accessRaw was already produced since TASK-002/003, only
+                      stored on the canonical row since TASK-019)
 db/
   queries/nearby.ts   the nearby-toilets PostGIS query (TASK-007); active-only,
                       distance order, server-capped result count; selects
-                      open_24h/opening_hours_normalized since TASK-013 and
-                      price_amount_minor/currency/payment_methods since TASK-014
+                      open_24h/opening_hours_normalized since TASK-013,
+                      price_amount_minor/currency/payment_methods since
+                      TASK-014, and verified_at/access_raw since TASK-019 (in
+                      place of the unused confidence_level column)
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
   migrations/         timestamped SQL migrations run by node-pg-migrate
     *_enable-postgis.sql   baseline: the extension only
     *_toilet-schema.sql    toilets, toilet_source_records, ingestion_runs, enums
+    *_add-confidence-access-raw.sql
+                      adds toilets.access_raw (TASK-019, ADR 0014)
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -257,6 +271,11 @@ Ownership:
   checked before any coordinate is stored, so it never reaches the
   fetch/ranking/marker code; one action, not the denied screen's two, since
   being outside Warsaw will not change on a retry.
+- `docs/adr/0014-computed-confidence-level.md` — `confidence_level` is
+  computed at request time from `verified_at`/`access_raw`, never a stored
+  column; `'high'` stays unreachable until real cross-source corroboration
+  exists (`TASK-022`), resolving `PRODUCT.md` section 9's own HIGH/LOW
+  wording tension conservatively.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -313,12 +332,18 @@ outside the coarse `WARSAW_BBOX` (TASK-018, ADR 0013) gets its own
 does know where the user is, just not somewhere it covers — with one
 action, not the denied screen's two, since a retry cannot change the
 answer; the out-of-area coordinate never reaches the marker, fetch, or
-ranking code. The report control still does
-not exist on the detail sheet (`TASK-020`'s job). No deduplication, real confidence
-scoring, reporting, analytics or error-tracking code exists. Ingestion
-exists but has never run against the live source — so the opening-hours
-and charge parsers have never seen a real OSM string, only constructed
-fixtures matching their documented grammars
-— and the map — tiles, the location dot, and the toilet markers — has
-never been visually observed rendering for real
-from this session. Those areas are owned by later tasks.
+ranking code. `confidence_level` is now a real, computed value (TASK-019,
+ADR 0014), not the schema's `'low'` default forever: `MEDIUM` for a toilet
+verified within the last year with a non-uncertain access basis, `LOW`
+otherwise, `HIGH` deliberately unreachable until a second source can
+actually corroborate one (`TASK-022`) — the already-built detail-sheet
+confidence hint and the opening-status qualification (`TASK-011`, ADR
+0009) both pick this up with no further change. The report control still
+does not exist on the detail sheet (`TASK-020`'s job). No deduplication,
+reporting, analytics or error-tracking code exists. Ingestion exists but
+has never run against the live source — so the opening-hours and charge
+parsers, and now the confidence computation, have never seen a real OSM
+string, only constructed fixtures matching their documented grammars — and
+the map — tiles, the location dot, and the toilet markers — has never been
+visually observed rendering for real from this session. Those areas are
+owned by later tasks.

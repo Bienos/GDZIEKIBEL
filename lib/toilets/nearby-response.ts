@@ -1,3 +1,4 @@
+import { computeConfidenceLevel } from './compute-confidence';
 import { computeOpeningStatus } from '../opening-hours/compute-status';
 import type { NormalizedOpeningHours, OpeningStatus } from '../opening-hours/types';
 import { approxWalkingMinutes } from './walking-time';
@@ -26,8 +27,14 @@ export interface NearbyToiletRow {
   /** The bounded-grammar parse of `charge` (TASK-014), or `null`. */
   priceAmountMinor: number | null;
   currency: string | null;
-  confidenceLevel: ConfidenceLevel;
+  /** Raw facts `computeConfidenceLevel` (TASK-019) derives `confidenceLevel`
+   * from, fresh on every response — never a stored, possibly stale value. */
+  verifiedAt: Date | null;
   accessType: AccessType;
+  /** The source's own access tag, kept apart from `accessType` so
+   * `computeConfidenceLevel` can tell a genuinely public basis from a
+   * merely tolerated one (`docs/adr/0014-computed-confidence-level.md`). */
+  accessRaw: string | null;
   wheelchair: FeatureState;
   changingTable: FeatureState;
   unisex: FeatureState;
@@ -56,6 +63,10 @@ export interface NearbyToiletResult {
   priceState: PriceState;
   priceAmountMinor: number | null;
   currency: string | null;
+  /** Computed by `computeConfidenceLevel` (TASK-019) from `verifiedAt` and
+   * `accessRaw`, fresh on every response — never `'high'` until a second
+   * source can corroborate a toilet (`TASK-022`). See
+   * `docs/adr/0014-computed-confidence-level.md`. */
   confidenceLevel: ConfidenceLevel;
   accessType: AccessType;
   features: {
@@ -83,6 +94,11 @@ const UNKNOWN_PAYMENT_METHODS: PaymentMethods = {
  * and so this stays testable against fixed instants.
  */
 export function toNearbyResult(row: NearbyToiletRow, now: Date): NearbyToiletResult {
+  const confidenceLevel = computeConfidenceLevel(
+    { verifiedAt: row.verifiedAt, accessRaw: row.accessRaw },
+    now,
+  );
+
   return {
     id: row.id,
     name: row.name,
@@ -92,14 +108,14 @@ export function toNearbyResult(row: NearbyToiletRow, now: Date): NearbyToiletRes
     approxWalkingMinutes: approxWalkingMinutes(row.distanceMeters),
     openingStatus: computeOpeningStatus(
       { open24h: row.open24h, openingHoursNormalized: row.openingHoursNormalized },
-      row.confidenceLevel,
+      confidenceLevel,
       now,
     ),
     open24h: row.open24h,
     priceState: row.priceState,
     priceAmountMinor: row.priceAmountMinor,
     currency: row.currency,
-    confidenceLevel: row.confidenceLevel,
+    confidenceLevel,
     accessType: row.accessType,
     features: {
       wheelchair: row.wheelchair,

@@ -972,6 +972,86 @@ on the outside screen, or any real multi-city support (`PRODUCT.md`
 principle 7, "Warsaw first" — this task only detects and communicates the
 existing boundary).
 
+### TASK-019 — Data confidence display
+
+Complete on 2026-09-13. Specified in `tasks/019-data-confidence-display.md`;
+decision recorded in `docs/adr/0014-computed-confidence-level.md`.
+
+**The display half was already built; the input was the real gap.**
+`DESIGN.md` section 9.4 places a confidence/source hint only on the toilet
+detail sheet, not the collapsed preview (section 9.3 doesn't list one);
+`TASK-011` already built exactly that hint, and `TASK-013`'s opening-status
+qualification (ADR 0009) already reads `confidence_level`. Nothing needed
+changing about placement. What was missing: `confidence_level` has always
+been the schema's `'low'` default (`docs/adr/0004-schema-conventions.md`)
+because `lib/ingest/upsert.ts`'s `canonicalValues()` never included it —
+every toilet showed `'low'` because nothing computed anything, not because
+`'low'` was individually correct for each one.
+
+**The HIGH/LOW tension, resolved conservatively.** `PRODUCT.md` section 9
+defines HIGH as "recent, trusted source **or** strong cross-source
+agreement" but defines LOW as including "single ... data **not yet
+corroborated**" — with only one source (OSM) in production, every real
+record is simultaneously both descriptions at once if it happens to carry
+a fresh `check_date`. `docs/adr/0009-opening-hours-status.md`, written
+before this task started, already committed to a reading: "once `TASK-019`
+starts producing `confidence_level` values above `'low'`, **well-
+corroborated** toilets will start showing plain `OPEN`/`CLOSED`." This task
+followed that existing commitment rather than reinterpreting it:
+`computeConfidenceLevel` never returns `'high'` — that still needs a real
+second source (`TASK-022`) to actually corroborate against, not recency
+alone from a single one.
+
+**MEDIUM from two real, already-captured signals.** A toilet is `MEDIUM`
+when both hold, `LOW` otherwise: (1) `verified_at` (already populated from
+OSM's `check_date`/`survey:date` since `TASK-002`/`TASK-003`) is within
+`VERIFICATION_FRESHNESS_DAYS` (365, a first defensible pass, OSM's own
+rough re-survey convention) of the evaluated moment; (2) the source's raw
+access tag is not the contract's uncertain case (`'permissive'` —
+`lib/ingest/osm/normalize.ts`'s own comment already reserved this exact
+raw value "so `TASK-019` can lower confidence for it", years before this
+task existed). `access_raw` had never been stored on the canonical
+`toilets` row before now — a new migration
+(`db/migrations/*_add-confidence-access-raw.sql`) adds it.
+
+**Computed at request time, the same shape of decision as `openingStatus`.**
+`verified_at`/`access_raw` are plain stored facts; `confidence_level` is
+derived from them and `now` inside `toNearbyResult`, never trusted from a
+stale stored column — `docs/adr/0009`'s own precedent. The
+`confidence_level`/`confidence_score` DB columns are untouched, left
+exactly as `docs/adr/0004` already described them.
+
+Created: `lib/toilets/compute-confidence.ts` (`computeConfidenceLevel`,
+`VERIFICATION_FRESHNESS_DAYS`; pure, no database). `lib/ingest/upsert.ts`
+gained `access_raw` in `canonicalValues()`/`INSERT_TOILET`/`UPDATE_TOILET`
+(21 parameters now; renumbered and hand-verified again, the same routine
+as `TASK-013`/`TASK-014`). `db/queries/nearby.ts` now selects
+`verified_at`/`access_raw` in place of the unused `confidence_level`
+column. `lib/toilets/nearby-response.ts`'s `toNearbyResult` computes
+`confidenceLevel` once and feeds the same value into both the response and
+`computeOpeningStatus`. `lib/toilets/filter-nearby.ts`'s `openNow`
+evaluation was also updated to the same computed value (it previously read
+the now-removed `row.confidenceLevel`) — functionally unaffected today,
+since `OPEN` and `LIKELY_OPEN` count identically for that filter, but kept
+consistent rather than left reading a field that no longer exists.
+
+Verified: lint, format, typecheck, 206 unit tests (12 new — 8 exhaustively
+covering `computeConfidenceLevel`'s freshness boundary, the permissive-
+access downgrade, and the future-date/never-HIGH cases, plus 4 new
+`toNearbyResult` cases proving the computed value flows into the response),
+32 integration tests (2 new: `access_raw`/`verified_at` round-trip through
+a real upsert and a real `findNearbyToilets` query, and a real inserted
+row verified within 10 days computing real `MEDIUM` confidence through
+`toNearbyResult` — not only a fixture), the production build, and all 16
+pre-existing Playwright tests unmodified (no new UI, so no new E2E
+coverage — every existing test mocks the API response directly and never
+exercises the real computation).
+
+Not created, by design: any path to `HIGH` confidence (needs `TASK-022`),
+any change to the ranking formula (`docs/adr/0007`'s own "Not decided
+here" territory), and any new UI (`DESIGN.md` already places the hint,
+`TASK-011` already built it).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1007,11 +1087,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 194 tests in 26 files                          |
+| `pnpm test:unit`          | pass, 206 tests in 27 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 30 tests in 4 files                            |
+| `pnpm test:integration`   | pass, 32 tests in 4 files                            |
 | `pnpm test:e2e`           | pass, 16 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, and a real out-of-Warsaw location grant) |
 
 Also observed:
@@ -1104,15 +1184,23 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-019 — Data confidence display` per `PLAN.md` (Milestone 3 — Trust
-   layer): "low/medium/high confidence can be surfaced where it improves
-   user decisions without clutter." Needs a `tasks/019-*.md` file.
-   `confidence_level` already exists end to end (schema, nearby response,
-   the detail sheet's `PEWNOŚĆ DANYCH: NISKA` hint since `TASK-011`) but is
-   always `'low'` today — nothing in the pipeline produces `'medium'` or
-   `'high'` yet (`docs/adr/0007-recommendation-ranking-formula.md`'s own
-   note). This task's real scope is worth reading `PRODUCT.md`'s
-   confidence-related sections closely before starting: it may be more
-   about surfacing the existing value usefully elsewhere (map markers,
-   list rows) than about computing new confidence levels, which could
-   need a second data source (`TASK-022`) to be meaningful.
+2. `TASK-020 — Report incorrect toilet data` per `PLAN.md`: "anonymous
+   validated report can be submitted." Needs a `tasks/020-*.md` file.
+   `PRODUCT.md` section 8 already names `toilet_report` as a core entity
+   and `ARCHITECTURE.md` section 5.3 already sketches its schema
+   (`toilet_id`, `issue_type`, `note`, `status enum('new','reviewed',
+   'accepted','rejected')`) — this task most likely creates the table via
+   a migration, a report endpoint, and a report control on the detail
+   sheet (`docs/adr/0009-opening-hours-status.md`'s consequences section
+   already notes the detail sheet has no report control yet). `PRODUCT.md`
+   section 6.4 (the report reasons and the no-immediate-rewrite rule) and
+   section 13's FR-08 (no account, must not expose private user data) are
+   worth reading closely before scoping: "anonymous" and "validated" both need
+   concrete rules (what makes a report valid, and — this project's
+   existing privacy discipline — that "anonymous" means no IP/device
+   fingerprint is stored, not merely no login). A report must not rewrite
+   canonical data on submission (`PRODUCT.md` section 6.4's own rule);
+   this task's scope should stop at accepting and storing a report, not
+   building a moderation workflow, unless `TASK-021`'s abuse controls turn
+   out to depend on it. `TASK-011`'s task file already deferred a report
+   control specifically until this task exists.

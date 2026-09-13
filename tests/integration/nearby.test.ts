@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { closePool, getPool } from '@/db/client';
 import { findNearbyToilets, MAX_NEARBY_RESULTS } from '@/db/queries/nearby';
-import type { NearbyToiletRow } from '@/lib/toilets/nearby-response';
+import { toNearbyResult, type NearbyToiletRow } from '@/lib/toilets/nearby-response';
 
 /**
  * Proves the nearby query against a real PostGIS database: the radius bound,
@@ -157,6 +157,25 @@ describe.skipIf(!hasDatabaseUrl)('findNearbyToilets', () => {
     expect(priced?.priceAmountMinor).toBe(450);
     expect(priced?.currency).toBe('PLN');
     expect(priced?.paymentMethods).toEqual({ cash: 'yes', cards: 'no', coins: 'unknown' });
+  });
+
+  it('reports verified_at and access_raw (TASK-019), and computes real MEDIUM confidence from them', async () => {
+    await getPool().query(
+      `INSERT INTO toilets (name, geom, access_raw, verified_at)
+       VALUES ($3, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 'yes', now() - interval '10 days')`,
+      [CENTRE.lng, CENTRE.lat + 0.001, `${PREFIX}recently-verified`],
+    );
+
+    const rows = ownRows(await findNearbyToilets(getPool(), { ...CENTRE, radiusMeters: 1000 }));
+    const row = rows.find((item) => item.name === `${PREFIX}recently-verified`);
+
+    expect(row?.accessRaw).toBe('yes');
+    expect(row?.verifiedAt).not.toBeNull();
+
+    // The real point of this fact: a fresh, real row now computes MEDIUM
+    // confidence, not the schema's own 'low' default (docs/adr/0014).
+    const result = toNearbyResult(row as NearbyToiletRow, new Date());
+    expect(result.confidenceLevel).toBe('medium');
   });
 
   it('reports paymentMethods as null (not an all-unknown object) for a pre-TASK-014 row with none recorded', async () => {

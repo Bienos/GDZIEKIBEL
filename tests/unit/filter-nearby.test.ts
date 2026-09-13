@@ -73,8 +73,9 @@ function row(overrides: Partial<NearbyToiletRow> = {}): NearbyToiletRow {
     priceState: 'unknown',
     priceAmountMinor: null,
     currency: null,
-    confidenceLevel: 'low',
+    verifiedAt: null,
     accessType: 'unknown',
+    accessRaw: null,
     wheelchair: 'unknown',
     changingTable: 'unknown',
     unisex: 'unknown',
@@ -103,7 +104,7 @@ describe('filterNearbyToilets', () => {
   });
 
   it('evaluates openNow against the real computed status, not a stored column', () => {
-    const rows = [row({ id: 'always-open', open24h: true, confidenceLevel: 'high' })];
+    const rows = [row({ id: 'always-open', open24h: true })];
 
     expect(filterNearbyToilets(rows, { openNow: true }, NOW)).toHaveLength(1);
     expect(filterNearbyToilets([row({ id: 'unknown-hours' })], { openNow: true }, NOW)).toEqual([]);
