@@ -27,6 +27,28 @@ export interface Dictionary {
   mapUnavailablePunchline: string;
   mapUnavailableExplanation: string;
   mapUnavailableRetry: string;
+  /**
+   * The permission-ask screen, shown once the map has loaded, before the
+   * browser's own permission prompt. `BRAND.md`'s "Location permission"
+   * copy. `locationAskPrivacyHint` is that section's second body option,
+   * used as the distinct privacy hint `DESIGN.md` section 9.2 asks for.
+   */
+  locationAskHeadline: string;
+  locationAskBody: string;
+  locationAskPrivacyHint: string;
+  locationAskAllow: string;
+  locationAskSkip: string;
+  /**
+   * One shared screen for every outcome that is not a grant: denied by the
+   * user, unavailable on this device, or timed out. `BRAND.md`'s
+   * "Location denied" copy and `DESIGN.md` section 9.9.
+   */
+  locationDeniedHeadline: string;
+  locationDeniedBody: string;
+  locationDeniedRetry: string;
+  locationDeniedOpenMap: string;
+  /** Accessible label for the user's own position marker on the map. */
+  userLocationLabel: string;
   /** Page title and description. */
   metaTitle: string;
   metaDescription: string;
@@ -40,6 +62,17 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     mapUnavailablePunchline: 'COŚ SIĘ WYSRAŁO.',
     mapUnavailableExplanation: 'Nie udało się załadować mapy.',
     mapUnavailableRetry: 'SPRÓBUJ JESZCZE RAZ',
+    locationAskHeadline: 'POZWÓL NAM ZNALEŹĆ KIBEL.',
+    locationAskBody: 'Bez lokalizacji pokażemy Ci Warszawę. Z lokalizacją pokażemy Ci kibel.',
+    locationAskPrivacyHint:
+      'Używamy lokalizacji tylko po to, żeby znaleźć coś blisko. Nie zapisujemy jej w bazie.',
+    locationAskAllow: 'UDOSTĘPNIJ LOKALIZACJĘ',
+    locationAskSkip: 'NIE TERAZ',
+    locationDeniedHeadline: 'NIE WIEMY, GDZIE JESTEŚ.',
+    locationDeniedBody: 'Bez lokalizacji możemy pokazać tylko ogólną mapę Warszawy.',
+    locationDeniedRetry: 'SPRÓBUJ PONOWNIE',
+    locationDeniedOpenMap: 'OTWÓRZ MAPĘ WARSZAWY',
+    userLocationLabel: 'Twoja lokalizacja',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
   },
@@ -50,6 +83,17 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     mapUnavailablePunchline: 'Something went wrong.',
     mapUnavailableExplanation: 'The map could not load.',
     mapUnavailableRetry: 'TRY AGAIN',
+    locationAskHeadline: 'Let us find you a toilet.',
+    locationAskBody:
+      'Without location we can show you Warsaw. With location we can show you a toilet.',
+    locationAskPrivacyHint: "We only use your location to find something nearby. We don't save it.",
+    locationAskAllow: 'SHARE LOCATION',
+    locationAskSkip: 'NOT NOW',
+    locationDeniedHeadline: "We don't know where you are.",
+    locationDeniedBody: 'Without location we can only show a general map of Warsaw.',
+    locationDeniedRetry: 'TRY AGAIN',
+    locationDeniedOpenMap: 'OPEN THE WARSAW MAP',
+    userLocationLabel: 'Your location',
     metaTitle: 'GdzieKibel.pl',
     metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
   },

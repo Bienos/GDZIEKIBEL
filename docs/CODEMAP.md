@@ -30,9 +30,11 @@ app/
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
-  map/MapShell.tsx    the Warsaw map (TASK-005); renders the literal fallback
-                      state when no tile provider key is configured or the
-                      map fails to load before its first successful load
+  map/MapShell.tsx    the Warsaw map (TASK-005) and the location permission
+                      flow (TASK-006); renders the tile fallback when no
+                      provider key is configured or the map fails to load
+                      before its first successful load, independent of
+                      that, the location ask/denied screens on mount
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
@@ -44,6 +46,9 @@ lib/
   map/tile-provider.ts  builds the MapTiler style URL from a key; the one
                       place that knows the provider's URL shape
   map/warsaw-view.ts  initial camera position and pan limits for the map shell
+  geolocation/request-location.ts
+                      wraps navigator.geolocation in one promise, classified
+                      into granted/denied/unavailable/timeout/error
   ingest/upsert.ts    source-agnostic write path; never deletes, marks not_seen_since
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
 db/
@@ -108,9 +113,9 @@ Ownership:
 
 ## Not yet created
 
-A Warsaw map shell renders with no geolocation, markers, ranking, or bottom
-sheet. No nearby query, deduplication, opening-hours parsing, confidence
-scoring, reporting, analytics or error-tracking code exists. Ingestion exists
-but has never run against the live source, and the map has never been
-visually observed with real tiles from this session. Those areas are owned
-by later tasks.
+A Warsaw map shell renders, and the location permission ask/grant/deny flow
+works, with no toilet markers, ranking, or bottom sheet. No nearby query,
+deduplication, opening-hours parsing, confidence scoring, reporting,
+analytics or error-tracking code exists. Ingestion exists but has never run
+against the live source, and the map has never been visually observed with
+real tiles from this session. Those areas are owned by later tasks.

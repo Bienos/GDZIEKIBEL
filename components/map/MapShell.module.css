@@ -1,10 +1,16 @@
+.mapWrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 .map {
   width: 100%;
   height: 100%;
 }
 
 /* MapLibre needs an explicit height on its container's ancestors too; the
-   page layout gives .map a flex child with a definite height. */
+   page layout gives .mapWrapper a flex child with a definite height. */
 
 .fallback {
   display: flex;
@@ -54,4 +60,117 @@
 .fallbackRetry:focus-visible {
   outline: 2px solid var(--text-inverse);
   outline-offset: 2px;
+}
+
+/* Location permission ask / denied screens (TASK-006).
+   DESIGN.md 9.2: "Use a light, utilitarian screen." Presented as a bottom
+   sheet over a dimmed map rather than replacing it, since the map already
+   exists behind it. */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(11 11 11 / 45%);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-5);
+  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  /* Critical map sheets use larger top corners for ergonomic mobile
+     behaviour (DESIGN.md section 6, "Shape language"). */
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+}
+
+.sheetHeadline {
+  margin: 0;
+  max-width: 28ch;
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.sheetHeadline:focus-visible {
+  outline: none;
+}
+
+.sheetBody {
+  margin: 0;
+  max-width: 36ch;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+}
+
+.sheetPrivacyHint {
+  margin: 0;
+  max-width: 36ch;
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+  line-height: var(--type-body-leading);
+}
+
+.sheetPrimary {
+  width: 100%;
+  min-height: 52px;
+  background: var(--action-primary);
+  color: var(--text-primary);
+  border: none;
+  font-size: var(--type-body-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sheetPrimary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sheetPrimary:focus-visible,
+.sheetSecondary:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.sheetSecondary {
+  width: 100%;
+  min-height: 48px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--type-body-size);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sheetSecondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The user's own position: a familiar blue dot, not a brand-coloured pin
+   (DESIGN.md section 8). --map-user-location is deliberately outside the
+   brand palette; see app/tokens.css. */
+.locationDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--map-user-location);
+  border: 2px solid var(--color-paper-0);
+  box-shadow: 0 0 0 1px rgb(11 11 11 / 25%);
 }

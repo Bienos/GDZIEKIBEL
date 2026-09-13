@@ -20,6 +20,12 @@
   --color-muted-500: #767676;
   --color-line-200: #d8d5ce;
 
+  /* Not a brand colour. A deliberately "familiar" location-marker blue,
+     matching the OS/map-app convention DESIGN.md section 8 asks for, kept
+     outside the brand palette so it is never mistaken for an interactive or
+     brand-emphasis colour. */
+  --color-location-blue: #4285f4;
+
   /* Semantic tokens (DESIGN.md 4 - Semantic tokens) */
   --bg-primary: var(--color-paper-50);
   --bg-inverse: var(--color-ink-950);
@@ -37,6 +43,9 @@
   --status-open: var(--color-status-green);
   --status-closed: var(--color-status-red);
   --status-uncertain: var(--color-status-orange);
+
+  /* The user's own position on the map (DESIGN.md 8, "User location"). */
+  --map-user-location: var(--color-location-blue);
 
   /* Spacing scale, 8 px base unit (DESIGN.md 3 - Spacing scale) */
   --space-base: 8px;
@@ -63,6 +72,8 @@
   --type-display-l-leading: 40px;
   --type-body-size: 16px;
   --type-body-leading: 24px;
+  --type-small-size: 14px;
+  --type-small-leading: 20px;
   --type-meta-size: 12px;
   --type-meta-leading: 16px;
 }

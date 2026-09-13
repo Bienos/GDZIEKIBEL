@@ -261,6 +261,52 @@ cloud environment with `NEXT_PUBLIC_MAPTILER_KEY` set to a real, domain-
 restricted key, running `pnpm dev` or `pnpm build && pnpm start` and looking
 at the page.
 
+### TASK-006 — Request and display user location
+
+Complete on 2026-09-13. Specified in `tasks/006-request-user-location.md`.
+
+Created: `lib/geolocation/request-location.ts`, wrapping
+`navigator.geolocation.getCurrentPosition` in one promise classified into
+`granted` / `denied` / `unavailable` / `timeout` / `error`, resolving
+`unavailable` immediately when the API does not exist rather than throwing.
+`MapShell` gained the permission-ask and one shared denied/unavailable/
+timeout screen, both from `BRAND.md`'s exact copy, plus a location-blue dot
+marker (`--color-location-blue`, deliberately outside the brand palette).
+
+**A design correction made during this task, recorded because it changes
+the acceptance criteria as originally written.** The task file first gated
+the permission ask on the map's own tiles having loaded. Re-reading
+`PRODUCT.md`'s primary journey ("immediately explains its purpose and asks
+for location access") and `DESIGN.md`'s screen order (permission before the
+main map, not after) showed that gate was an unwarranted assumption, not a
+requirement. The ask now appears on mount regardless of tile state; granting
+location while tiles are in their fallback state is a handled case with
+simply nowhere yet to place a dot. `tasks/006-request-user-location.md` was
+updated to match before this was implemented, not after.
+
+That correction had a second, valuable effect: it made the whole flow
+testable in an environment with no working tile provider key. The Playwright
+suite now covers all three outcomes: skipping the ask, a hand-mocked denial
+(deterministic, not dependent on browser permission-automation defaults),
+and — genuinely, not mocked — a real browser grant via Playwright's own
+`permissions`/`geolocation` fixtures, which drives the actual
+`navigator.geolocation.getCurrentPosition` call this app makes.
+
+Verified: lint, format, typecheck, 87 unit tests (7 new, covering every
+branch of the result classification including the no-API case and the exact
+`PositionOptions` requested), 19 integration tests, the production build,
+and 5 Playwright tests.
+
+Not created, by design: persistence of the user's choice across visits (no
+canonical source asks for it), an accuracy halo, a way to re-open the ask
+after dismissal, and anything that sends coordinates anywhere — there is no
+server call in this task at all.
+
+**Still unverified:** everything already listed under TASK-005 (live tiles).
+Additionally, the granted path has only been observed with the map itself in
+its fallback state, since this session has no working tile key; placing a
+real marker on a real map has not been visually confirmed.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -296,12 +342,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 80 tests in 10 files                           |
+| `pnpm test:unit`          | pass, 87 tests in 11 files                           |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 19 tests in 3 files                            |
-| `pnpm test:e2e`           | pass, 2 tests in the `mobile-chromium` project (map fallback) |
+| `pnpm test:e2e`           | pass, 5 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant) |
 
 Also observed:
 
@@ -390,8 +436,10 @@ TASK-004 and, with the same run, most of the TASK-002 observation gaps.
 
 Two things, in order:
 
-1. Visually confirm the map shell renders real tiles, from a session with a
-   real `NEXT_PUBLIC_MAPTILER_KEY` and working egress to `api.maptiler.com`.
-2. `TASK-006 — Request and display user location` per `PLAN.md`, which needs
-   a `tasks/006-*.md` file. This is the task that adds the permission request
-   and the location dot on top of the shell TASK-005 built.
+1. Visually confirm the map shell renders real tiles and a real location dot,
+   from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
+   to `api.maptiler.com`.
+2. `TASK-007 — Nearby toilet API` per `PLAN.md`, which needs a
+   `tasks/007-*.md` file. This is the first task that touches the database
+   from a request path: given coordinates, return bounded nearby canonical
+   toilets using the PostGIS schema TASK-003 built.
