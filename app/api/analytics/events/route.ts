@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPool } from '@/db/client';
 import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { parseAnalyticsRequest } from '@/lib/analytics/analytics-request';
+import { logRuntimeError } from '@/lib/observability/log-runtime-error';
 
 /**
  * `POST /api/analytics/events` — the five client-only funnel events
@@ -12,6 +13,10 @@ import { parseAnalyticsRequest } from '@/lib/analytics/analytics-request';
  * Deliberately not rate-limited (see the ADR's "Not decided here"): a
  * named gap, not a silent one. The stored row is `event_name` and a
  * server-assigned timestamp only — no location, session, or device data.
+ *
+ * An unexpected failure (TASK-024, `docs/adr/0019-runtime-error-logging.md`)
+ * is caught, logged with no request body in scope, and answered with one
+ * generic `500` — never the framework default.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -26,7 +31,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validation.message }, { status: 400 });
   }
 
-  await insertAnalyticsEvent(getPool(), validation.eventName);
-
-  return NextResponse.json({ ok: true }, { status: 201 });
+  try {
+    await insertAnalyticsEvent(getPool(), validation.eventName);
+    return NextResponse.json({ ok: true }, { status: 201 });
+  } catch (error) {
+    logRuntimeError('POST /api/analytics/events', error);
+    return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 });
+  }
 }

@@ -33,7 +33,9 @@ app/
                       rankNearbyToilets (TASK-009); also logs the
                       server-observed `results_loaded`/`no_results` and,
                       when a filter is active, `filter_applied` analytics
-                      events (TASK-023, ADR 0018)
+                      events (TASK-023, ADR 0018); an unexpected throw past
+                      validation is caught, logged, and answered with a
+                      generic 500 (TASK-024, ADR 0019)
   api/toilets/[id]/reports/route.ts
                       POST only; a validated, anonymous, rate-limited
                       report (TASK-020 ADR 0015, TASK-021 ADR 0016): the
@@ -42,13 +44,18 @@ app/
                       id or invalid body, 404 for a well-formed but unknown
                       toilet id, 201 with the created report's id on
                       success, which also logs the server-observed
-                      `report_submitted` analytics event (TASK-023, ADR 0018)
+                      `report_submitted` analytics event (TASK-023, ADR
+                      0018); an unexpected throw anywhere in the handler is
+                      caught, logged, and answered with a generic 500
+                      (TASK-024, ADR 0019)
   api/analytics/events/route.ts
                       POST only; a validated, anonymous first-party
                       analytics event (TASK-023, ADR 0018): 400 for an
                       unrecognised `eventName`, 201 on success; the write
                       itself never fails the request (insertAnalyticsEvent
-                      never throws)
+                      never throws); an unexpected throw from `getPool()`
+                      itself is caught, logged, and answered with a
+                      generic 500 (TASK-024, ADR 0019)
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -226,6 +233,18 @@ lib/
                       throws and never rejects — a caller fires it without
                       awaiting, and a failure here must never look like the
                       feature it is attached to broke (TASK-023)
+  observability/log-runtime-error.ts
+                      the one place a runtime error becomes observable
+                      (TASK-024, ADR 0019): a structured JSON `console.error`
+                      line — no request body, coordinate, or property beyond
+                      a fixed `LogContext` and the caught error ever reaches
+                      it, by construction; the message/stack still passes
+                      through `scrubSensitiveText` as a second layer
+  observability/scrub-sensitive-text.ts
+                      redacts a decimal coordinate pair or a `lat`/`lng`/
+                      `lon`-keyed number from free text (TASK-024, ADR
+                      0019); bounded like `parseCharge`/`parseOpeningHours`
+                      — a bare decimal (a price, an ETA) is left alone
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
@@ -279,9 +298,15 @@ db/
                       `event_name` and a server-assigned `occurred_at`
                       only; wrapped so a write failure never throws —
                       analytics must never fail the request it is
-                      attached to
+                      attached to — but is no longer silent: the caught
+                      error is logged via `logRuntimeError` (TASK-024,
+                      ADR 0019)
 db/
-  client.ts           shared pg connection pool
+  client.ts           shared pg connection pool; `pool.on('error', ...)`
+                      routes an idle client's own failure through
+                      `logRuntimeError` (TASK-024, ADR 0019) — found by that
+                      task's own smoke test as an unstructured, uncaught
+                      exception no per-route try/catch could reach
   postgis.ts          PostGIS availability/version read
   migrations/         timestamped SQL migrations run by node-pg-migrate
     *_enable-postgis.sql   baseline: the extension only
@@ -410,6 +435,16 @@ Ownership:
   throws, so a write failure can never fail the request it is attached to;
   the endpoint is deliberately not rate-limited, a named gap mirroring
   `TASK-020`'s own reports endpoint before `TASK-021`.
+- `docs/adr/0019-runtime-error-logging.md` — a first-party structured
+  `console.error` logger, not Sentry (no account/DSN exists), the same
+  resolution shape as ADR 0016/0018; leakage prevented by construction
+  (no call site ever hands the logger a request, body, or coordinate),
+  `scrubSensitiveText` as a bounded second layer; all three routes and
+  `insertAnalyticsEvent`'s own swallowed catch now log through it; the
+  pool's own `'error'` event is wired too — a real gap this task's own
+  forced-failure smoke test found (an idle client's connection failing
+  with no request in flight was an unstructured, uncaught exception
+  before this fix).
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -511,8 +546,22 @@ verified with a real curl/DB smoke test against a running production
 build covering all nine events, an insert/400 pair on the endpoint
 itself, and a direct `information_schema` query confirming the table's
 three columns. The endpoint is not rate-limited, a named gap mirroring
-the report endpoint's own gap before TASK-021. No error-tracking code
-exists yet. Ingestion exists but has never run against the live source — so
+the report endpoint's own gap before TASK-021. Runtime errors are now
+observable (TASK-024, ADR 0019): all three route handlers, plus
+`insertAnalyticsEvent`'s own swallowed catch and the connection pool's own
+`'error'` event, log through one structured `console.error` sink — no
+Sentry (or equivalent) account/DSN exists, so this is a first-party
+minimum, not a named provider. No call site ever hands the logger a
+request body or a coordinate; a bounded `scrubSensitiveText` redacts a
+coordinate-shaped substring from an error's own message/stack as a second
+layer. A client now sees one generic `500` on a genuine unexpected
+failure, never a stack trace or the framework default. Verified with a
+real forced failure (stopping Postgres under a running production build):
+all three routes returned the generic `500`, the pool's own idle-client
+error logged cleanly instead of the raw, uncaught-exception dump this
+task's own smoke test first found, and no request body or coordinate
+(including one deliberately placed in a report's `note`) ever reached a
+log line. Ingestion exists but has never run against the live source — so
 the opening-hours and charge parsers, and the confidence computation,
 have never seen a real OSM string, only constructed fixtures matching
 their documented grammars — and the map — tiles, the location dot, and

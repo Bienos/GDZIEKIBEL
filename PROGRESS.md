@@ -1370,6 +1370,96 @@ device identifier of any kind, any dashboard or query surface reading
 route's response shape (each new `insertAnalyticsEvent` call is additive,
 after the response body is already decided).
 
+### TASK-024 — Error tracking / privacy scrubbing
+
+Complete on 2026-09-14. Specified in
+`tasks/024-error-tracking-privacy-scrubbing.md`; decision recorded in
+`docs/adr/0019-runtime-error-logging.md`.
+
+**Nothing was observable before this task.** No route handler caught an
+unexpected exception at all: a genuine runtime failure (a DB error, a
+connection drop) was invisible to this project, not merely unscrubbed.
+`ARCHITECTURE.md`'s "Error tracking" entry names "Sentry or equivalent";
+no account or DSN exists or can be created from this session.
+
+**First-party structured logging, the same resolution shape as TASK-021
+and TASK-023.** `lib/observability/log-runtime-error.ts` emits one
+structured JSON line to `console.error`, which Vercel's own log pipeline
+already captures — no new service, account, or environment variable. A
+real Sentry (or equivalent) integration can later replace this one
+function's body without any call site changing.
+
+**Leakage prevented by construction, not by inspecting a request
+afterward.** No call site ever hands the logger a request object, a
+parsed body, or a coordinate — only a fixed `LogContext` label and
+whatever was actually thrown. This was proven directly: a report smoke
+test deliberately placed a coordinate-looking string inside a report's
+free-text `note`, and it never reached any log line, because the failure
+(a rate-limit DB check) happened before the request body was even parsed.
+`scrubSensitiveText` is a second, defense-in-depth layer for the one case
+that still carries text this project did not itself write — an
+unexpected database driver error — redacting a coordinate pair or a
+`lat`/`lng`/`lon`-keyed number; a bare decimal (a price, an ETA) is left
+alone.
+
+**A real gap found by this task's own verification, not left for later.**
+Forcing a genuine failure (stopping Postgres under a running production
+build, per the task's own verification requirement) surfaced a second
+failure mode no per-route `try`/`catch` could reach: an idle client
+already sitting in the connection pool can fail with no request in
+flight at all, and `node-postgres` turns an unhandled listener for this
+into an uncaught exception — observed directly as a large, unstructured
+`Client` object dumped straight to `stderr`. `db/client.ts`'s `getPool()`
+now attaches `pool.on('error', ...)`, routed through the same
+`logRuntimeError`, closing this gap rather than leaving "runtime errors
+are observable" false for the failure mode most likely during an actual
+database outage. `db/queries/analytics.ts`'s own doc comment (written
+during TASK-023) had already named this task as where its silently
+swallowed write failure would stop being silent; its `catch` now logs
+too, with no change to its established never-throws contract.
+
+Created: `lib/observability/scrub-sensitive-text.ts`,
+`lib/observability/log-runtime-error.ts` (`LogContext`, `LOG_CONTEXTS`).
+A `try`/`catch` added around each of `app/api/toilets/nearby/route.ts`,
+`app/api/toilets/[id]/reports/route.ts`, and
+`app/api/analytics/events/route.ts`'s existing bodies, each returning one
+generic `{ error: 'Unexpected server error.' }` `500` on an unexpected
+throw. `db/client.ts`'s `getPool()` gained `attachPoolErrorLogging`
+(exported separately for unit testing, mirroring `lib/env/server.ts`'s
+`parseServerEnv`/`getServerEnv` split). `db/queries/analytics.ts`'s
+existing swallowed `catch` now logs via `logRuntimeError`.
+
+Verified: lint, format, typecheck, 269 unit tests (12 new —
+`scrubSensitiveText`'s coordinate-pair and keyed-value redaction plus its
+refusal to touch a bare decimal, `logRuntimeError`'s structured output and
+its own redaction of a coordinate that ends up in an error message, and
+`attachPoolErrorLogging`'s wiring using a real, never-connected `Pool`
+instance), 46 integration tests unchanged (the existing suite already
+exercises `insertAnalyticsEvent`'s error path, which now also emits a
+visible log line — confirmed in the test's own captured `stderr`, not
+merely inferred), the production build, and all 19 Playwright tests
+passing unmodified (no user-visible change; every existing 400/404/429
+path is an existing `return`, never touched by this task's `catch`
+blocks). Independently confirmed with a real forced-failure smoke test
+against a running production build and a real PostgreSQL database:
+stopping Postgres produced a clean `{"level":"error","source":"db/client.ts:pool",...}`
+line (not the raw, uncaught-exception dump observed before the pool fix),
+then a `500 { "error": "Unexpected server error." }` from both
+`/api/toilets/nearby` and `/api/toilets/[id]/reports` with a matching
+structured log line for each, and `/api/analytics/events` still returning
+its normal `201` (its own write failure is swallowed by design, now
+logged rather than silent) — a report request's `note` deliberately
+containing a coordinate-shaped string never appeared in any log line.
+Postgres and the smoke-test server were restored/stopped afterward, and
+smoke-test rows were deleted.
+
+Not created, by design: adoption of a named third-party error-tracking
+provider (no account/DSN exists to configure one honestly), request
+tracing, breadcrumbs, or source-map upload (a real Sentry-equivalent's
+eventual features, not this task's minimum), and any change to client-side
+error handling (`fetchNearbyToilets`, `submitReport`, `reportEvent` already
+never throw, which is correct and outside this task's scope).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1405,7 +1495,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 259 tests in 35 files                          |
+| `pnpm test:unit`          | pass, 269 tests in 38 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
@@ -1438,6 +1528,32 @@ Also observed:
 - CI runs E2E in a separate job. It was not deferred.
 - The `enable-postgis` down migration is deliberately a no-op, because dropping
   PostGIS would cascade into every geometry column.
+- `playwright.config.ts`'s `webServer` uses `reuseExistingServer:
+  !process.env.CI` against a real production build on port 3100, backed by
+  this environment's real `DATABASE_URL`. Discovered during TASK-024's own
+  verification: since TASK-023 added `app_opened` firing unconditionally
+  on every `MapShell` mount, any e2e test that does not explicitly mock
+  `/api/analytics/events` sends a real request to that reused server,
+  writing a real row. Observed directly: running `pnpm test:e2e` twice
+  left 34-35 genuine `analytics_events` rows (`app_opened`,
+  `location_granted`/`denied`, `toilet_selected`, and even `no_results`
+  from at least one unmocked nearby fetch) plus one real
+  `report_rate_limit_windows` row. Not a privacy defect — the table holds
+  no location or identifying data by design — but a real test-isolation
+  gap in TASK-023's own e2e coverage, out of scope to fix under TASK-024.
+  All such rows were deleted after each verification run in this session;
+  a future task touching e2e infrastructure should mock
+  `/api/analytics/events` (and any other now-instrumented endpoint)
+  globally rather than per-test.
+- Restarting the local Postgres cluster (`pg_ctlcluster 16 main stop` then
+  `start`) can leave the very next `pnpm test:integration` run seeing
+  extra, pre-existing rows in a table an unrelated test just inserted
+  into moments earlier, self-resolving on an immediate re-run with the
+  table verified empty. Observed twice this session (TASK-023 and
+  TASK-024), both times immediately after a cluster restart; the cause was
+  not isolated further since it self-heals and `fileParallelism: false`
+  already serialises integration test files. Re-run once if a fresh
+  cluster restart precedes a flaky integration count.
 
 ## Known unresolved decisions
 
@@ -1502,30 +1618,26 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-024 — Error tracking / privacy scrubbing` per `PLAN.md` (Milestone 4
-   — Product quality): "runtime errors are observable and location/
-   request-body leakage is prevented." Needs a `tasks/024-*.md` file.
-   `ARCHITECTURE.md`'s "Error tracking" section names "Sentry or
-   equivalent" and requires it to "scrub request bodies/headers where they
-   could contain location or user-entered notes"; section 17
-   (Observability) is the more actionable list — track "request error
-   rate, nearby query latency, DB errors, ingestion failures, report
-   submission failures, map/provider load failures where measurable," but
-   never log "precise user coordinates, full request bodies for location
-   endpoint, secrets, excessive raw source datasets." Section 20 lists
-   "error tracking DSN (if enabled)" as an optional environment variable,
-   and section 23 still lists the exact provider as unvalidated.
-   `PRODUCT.md` section 20 folds this into MVP readiness: "logging/error
-   tracking is configured without leaking sensitive values." This is the
-   same shape of question `TASK-021` and `TASK-023` both already answered
-   the same way: no Sentry (or equivalent) account/key exists in this
-   project, so the first real decision is again whether to adopt a named
-   external provider (impossible without credentials this session cannot
-   create) or build the smallest first-party equivalent — here, likely
-   structured server-side error logging with an explicit scrubbing step
-   for anything resembling a coordinate, an `Authorization` header, or a
-   report's free-text `note`, proven with a test that feeds a real error
-   containing a fabricated coordinate/note through the scrubber and asserts
-   neither survives. `docs/adr/0016-report-rate-limiting.md` and
-   `docs/adr/0018-first-party-analytics.md` are the two precedents to read
-   first.
+2. `TASK-025 — Performance pass` per `PLAN.md` (Milestone 4 — Product
+   quality): "measured mobile performance meets agreed budgets or has
+   documented remaining constraints." Needs a `tasks/025-*.md` file.
+   `PRODUCT.md` section 16 names the target experience but deliberately
+   sets no numbers yet: "app shell becomes interactive quickly," "map
+   library should not block the first meaningful call-to-action
+   unnecessarily," "nearby query should normally complete fast enough to
+   feel immediate after geolocation," "avoid downloading all Warsaw toilet
+   data if a bounded nearby query is sufficient," "lazy-load non-critical
+   visuals" — and says explicitly that "concrete performance budgets
+   should be added during foundation/performance tasks after baseline
+   measurement," making this task's first real step a measurement, not an
+   optimisation. `ARCHITECTURE.md` section 15 (Caching) already sets the
+   one binding constraint this task must not weaken: `no-store` on the
+   nearby search response, never a shared cache keyed by precise
+   coordinates — any performance work here must stay inside that, e.g.
+   caching static/config data and map provider assets per section 15's own
+   list, not the location-bearing response itself. A real Lighthouse/mobile
+   performance run needs a real running production build (this session's
+   own `pnpm build && pnpm start` pattern already proven every prior task)
+   and, ideally, the same real `NEXT_PUBLIC_MAPTILER_KEY`/tile access named
+   in item 1 above, since the map library is one of section 16's own named
+   risks to the first meaningful call-to-action.

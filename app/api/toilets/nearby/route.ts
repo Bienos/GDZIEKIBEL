@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { getPool } from '@/db/client';
 import { findNearbyToilets } from '@/db/queries/nearby';
+import { logRuntimeError } from '@/lib/observability/log-runtime-error';
 import { filterNearbyToilets } from '@/lib/toilets/filter-nearby';
 import { parseNearbyRequest } from '@/lib/toilets/nearby-request';
 import { toNearbyResult } from '@/lib/toilets/nearby-response';
@@ -33,6 +34,11 @@ import { rankNearbyToilets } from '@/lib/toilets/rank-nearby';
  * `filter_applied` (TASK-023: `docs/adr/0018-first-party-analytics.md`) —
  * this route already computes the ranked count and already receives
  * `filters`, so no separate client round trip is needed for either event.
+ *
+ * An unexpected failure past this point (TASK-024,
+ * `docs/adr/0019-runtime-error-logging.md`) is caught, logged with no
+ * request body or coordinate in scope, and answered with one generic
+ * `500` — never the framework default.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -47,16 +53,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validation.message }, { status: 400 });
   }
 
-  const now = new Date();
-  const rows = await findNearbyToilets(getPool(), validation.params);
-  const filtered = filterNearbyToilets(rows, validation.params.filters, now);
-  const ranked = rankNearbyToilets(filtered);
+  try {
+    const now = new Date();
+    const rows = await findNearbyToilets(getPool(), validation.params);
+    const filtered = filterNearbyToilets(rows, validation.params.filters, now);
+    const ranked = rankNearbyToilets(filtered);
 
-  const pool = getPool();
-  await insertAnalyticsEvent(pool, ranked.length > 0 ? 'results_loaded' : 'no_results');
-  if (Object.keys(validation.params.filters).length > 0) {
-    await insertAnalyticsEvent(pool, 'filter_applied');
+    const pool = getPool();
+    await insertAnalyticsEvent(pool, ranked.length > 0 ? 'results_loaded' : 'no_results');
+    if (Object.keys(validation.params.filters).length > 0) {
+      await insertAnalyticsEvent(pool, 'filter_applied');
+    }
+
+    return NextResponse.json({ results: ranked.map((row) => toNearbyResult(row, now)) });
+  } catch (error) {
+    logRuntimeError('POST /api/toilets/nearby', error);
+    return NextResponse.json({ error: 'Unexpected server error.' }, { status: 500 });
   }
-
-  return NextResponse.json({ results: ranked.map((row) => toNearbyResult(row, now)) });
 }
