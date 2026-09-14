@@ -1771,6 +1771,29 @@ repository is imported from the Vercel dashboard:
   `package.json`, not from the committed tree;
 - `vercel.json` was not exercised by that build.
 
+**Correction, 2026-09-14: the above stopped being true well before this
+date, and every task's `PROGRESS.md` entry from TASK-015 onward
+(mis)repeated it as current anyway.** Once this session's own Vercel MCP
+access was fixed (see below), `mcp__Vercel__list_deployments` showed a
+real, complete deployment history: a production deployment exists for
+every one of this branch's own commits going back to at least TASK-015's
+`e7867b9`, each one's metadata correctly naming the real GitHub commit
+SHA, author, and branch — proof the repository was actually git-linked
+and auto-deploying on every push for most of this session's own history,
+not the "manually-uploaded, does not rebuild on push" state recorded
+above. Exactly when the manual upload was replaced with a real git link
+is not established (no session recorded doing it, and no note of it was
+ever passed forward) — this was found only by directly querying Vercel's
+own deployment history just now, not by any task re-checking its own
+"unresolved blocker" claim before repeating it. Recorded plainly: this is
+a real process failure, not a minor detail — TASK-016 through TASK-029
+each named a real Vercel deployment as an open blocker for later
+milestone tasks when it may not have been true for some or all of that
+span. A future session should treat any blocker this file names as
+worth re-verifying before repeating, not assumed still true from an
+earlier entry, especially for infrastructure state a task itself does
+not directly touch.
+
 **Supabase staging database provisioned, then found no longer visible,
 2026-09-14.** At the project owner's request, a Supabase organisation and
 a Frankfurt-region (`eu-central-1`) project were created via the Supabase
