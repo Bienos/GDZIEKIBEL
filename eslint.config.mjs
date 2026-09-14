@@ -11,6 +11,8 @@ const config = [
       'playwright-report/**',
       'test-results/**',
       'next-env.d.ts',
+      // MapLibre's own minified worker, copied in by scripts/map/copy-maplibre-worker.ts.
+      'public/maplibre-gl/**',
     ],
   },
   ...coreWebVitals,

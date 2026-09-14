@@ -2224,36 +2224,89 @@ tile host; this sandboxed session still does not):
    never enforces CORS the way a real browser does, so a clean status
    alone would not have proven a browser could use the response).
 
-With the server side proven correct, the remaining explanation is a
-silent hang inside MapLibre's own WebGL/resource-loading pipeline,
-specific to that device, that this project's toolset cannot reach or
-reproduce directly (no real browser devtools access to that phone).
-Rather than leave this un-diagnosable failure mode unhandled, added a
-concrete, defensible mitigation instead of further guessing at the root
-cause: `MAP_LOAD_TIMEOUT_MS` (`components/map/MapShell.tsx`) bounds how
-long the map-loading effect waits for MapLibre's own `load` or `error`
-event before treating a load that fired neither as failed, showing the
-existing retry fallback instead of hanging indefinitely. Covered by a
-new e2e regression test using Playwright's fake-timer `page.clock` API
-(`e2e/home.spec.ts`) that hangs the tile request deliberately (no
-`fulfill`/`abort`/`continue`) and fast-forwards past the timeout,
-deterministically, without a real 15-second wait — distinct from this
-suite's existing fallback tests, which hit the `error` path (this
-sandbox's lack of egress fails fast) rather than this timeout path.
+With the server side proven correct, the first change made was a
+mitigation rather than a fix: `MAP_LOAD_TIMEOUT_MS`
+(`components/map/MapShell.tsx`) bounds how long the map-loading effect
+waits for MapLibre's own `load` or `error` event before treating a load
+that fired neither as failed, showing the existing retry fallback
+instead of hanging indefinitely. Covered by an e2e regression test using
+Playwright's fake-timer `page.clock` API (`e2e/home.spec.ts`) that hangs
+the tile request deliberately (no `fulfill`/`abort`/`continue`) and
+fast-forwards past the timeout, without a real 15-second wait — distinct
+from this suite's existing fallback tests, which hit the `error` path
+(this sandbox's lack of egress fails fast) rather than this timeout
+path.
 
-This mitigates the symptom without knowing the true root cause; it does
-not explain why `load`/`error` never fired on that specific device. Not
-yet confirmed: whether the fallback screen now actually appears after
-~15 seconds when the project owner reloads the live site on the same
-phone — the concrete next check for a future session or the owner
-directly.
+**Then the real root cause was found: MapLibre's worker never started
+(`docs/adr/0026-maplibre-worker-static-asset.md`).** A further screenshot
+from the owner showed what the earlier report had not: MapLibre's own
+zoom controls and its attribution line (`MapLibre | OpenFreeMap ©
+OpenMapTiles Data from OpenStreetMap`) were both rendering, and the
+fallback screen was not. The style had therefore loaded and been parsed —
+so the failure was after the style, not at it. Reproduced directly in
+headless Chromium against this project's own production build, with the
+style and tiles served by the test itself (this sandbox still has no
+egress to the tile host): MapLibre loaded the style and TileJSON, sized
+its canvas correctly, populated attribution from the style — and
+requested **zero** tiles. Its Web Worker had been created from the URL of
+the page itself, and closed immediately.
 
-Modified: `components/map/MapShell.tsx`, `e2e/home.spec.ts`. Kept in the
-repository, unwired from `buildCommand` (reverted to the steady-state
-`pnpm db:migrate && pnpm build`): `scripts/db/check-tile-style.ts`,
+MapLibre GL JS 6 is ESM-only and ships its tile-loading worker as a
+separate module (`dist/maplibre-gl-worker.mjs`, importing
+`./maplibre-gl-shared.mjs`), located by default relative to its own
+`import.meta.url` behind a `/^https?:/` test, falling back to an empty
+string otherwise. Under Turbopack (`next build`'s bundler)
+`import.meta.url` is not an http(s) URL, so `new Worker('', {type:
+'module'})` starts the worker from the page URL — HTML, not JavaScript —
+and it dies at once. Every tile load is dispatched to that dead worker
+and never resolves, so `load` never fires, no `error` fires, and nothing
+is logged: exactly the blank-map-with-controls symptom, on every browser,
+not just the reporting device.
+
+Fixed by serving the worker as a static asset and naming it explicitly:
+`lib/map/worker-url.ts` (`MAP_WORKER_URL`), `lib/map/worker-assets.ts`
+(copies the worker plus every sibling it imports),
+`scripts/map/copy-maplibre-worker.ts` (`pnpm map:copy-worker`, run first
+by both `dev` and `build`, output gitignored), and a
+`setWorkerUrl(MAP_WORKER_URL)` call in `MapShell.tsx` before the first
+map is constructed.
+
+Verified, not assumed, in this order:
+
+1. With the fix, headless Chromium creates the worker from
+   `/maplibre-gl/maplibre-gl-worker.mjs` (served as
+   `application/javascript`) and issues real tile requests for Warsaw's
+   zoom-11 tiles — observed both through Playwright and by a separate
+   local HTTP tile server outside its interception, which logged the
+   `.pbf` requests itself.
+2. **Negative control**: with only the `setWorkerUrl` call commented out
+   and the app rebuilt, the new e2e test fails by timing out waiting for
+   a tile request that never comes — confirming the test detects this
+   exact defect rather than passing incidentally. The call was then
+   restored and the suite re-run green.
+3. `tests/unit/worker-assets.test.ts` pins the installed package's real
+   worker/shared layout, so a future `maplibre-gl` upgrade that renames
+   or restructures it fails a test rather than shipping a blank map.
+
+`MAP_LOAD_TIMEOUT_MS` is kept: it is what would have turned this silent
+hang into a visible, recoverable fallback instead of a blank area, and
+remains the safety net for any future failure of the same shape.
+
+Not yet confirmed: the real site rendering real tiles in an ordinary
+browser after this deploy — the one remaining check, and the last piece
+of the primary journey nobody has yet reported actually seeing.
+
+Modified: `components/map/MapShell.tsx`, `e2e/home.spec.ts`,
+`package.json`, `.gitignore`, `eslint.config.mjs`, `docs/CODEMAP.md`.
+Created: `lib/map/worker-url.ts`, `lib/map/worker-assets.ts`,
+`scripts/map/copy-maplibre-worker.ts`,
+`tests/unit/worker-assets.test.ts`,
+`docs/adr/0026-maplibre-worker-static-asset.md`. Kept in the repository,
+unwired from `buildCommand` (steady state is `pnpm db:migrate && pnpm
+build`): `scripts/db/check-tile-style.ts`,
 `scripts/db/reconcile-migration-history.ts` (unrelated, kept from the
-migration-bookkeeping fix above) — both reusable if a similar
-build-time diagnostic is needed again.
+migration-bookkeeping fix above) — both reusable if a similar build-time
+diagnostic is needed again.
 
 ## Verification at current baseline
 
@@ -2378,13 +2431,15 @@ Not verifiable in this environment, and therefore not claimed:
   environment is not recorded. Superseded in spirit by the 2026-09-14
   Overpass ingestion above, which succeeded from Vercel's own build
   environment instead — a different, real path to the same result.
-- Whether the `MAP_LOAD_TIMEOUT_MS` fallback (above) actually appears
-  after ~15 seconds on the specific iPhone Safari device that reported a
-  permanently blank map: not yet confirmed. The fix is verified by a
-  deterministic e2e regression test using fake timers, and the tile
-  URL/DNS/CORS server-side causes are ruled out directly against
-  production, but the real device itself has not been re-checked since
-  this fix deployed.
+- Whether the real deployed site now renders real tiles in an ordinary
+  browser, after the MapLibre worker fix
+  (`docs/adr/0026-maplibre-worker-static-asset.md`): not yet confirmed by
+  anyone looking at it. The defect itself is fully understood and
+  reproduced, the fix is verified against this project's own production
+  build in a real browser (real tile requests, plus a negative control
+  proving the new e2e test detects the defect), but this sandbox has no
+  egress to the tile host, so no session can see real Warsaw tiles
+  render. That check belongs to whoever opens the live site next.
 - The TASK-002 source verification (Warsaw open-data hosts specifically:
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
   `warszawa19115.pl`) still could not be started from this sandboxed

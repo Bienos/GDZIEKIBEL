@@ -8,8 +8,8 @@
     "node": ">=22.12.0 <23"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm map:copy-worker && next dev",
+    "build": "pnpm map:copy-worker && next build",
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -25,6 +25,7 @@
     "db:check": "tsx scripts/db/check-postgis.ts",
     "db:reconcile-migration-history": "tsx scripts/db/reconcile-migration-history.ts",
     "db:check-tile-style": "tsx scripts/db/check-tile-style.ts",
+    "map:copy-worker": "tsx scripts/map/copy-maplibre-worker.ts",
     "ingest:osm": "tsx scripts/ingest/osm.ts",
     "research:probe": "tsx scripts/research/probe-sources.ts"
   },

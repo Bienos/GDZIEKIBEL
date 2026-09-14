@@ -118,6 +118,84 @@ test('a hung tile load falls back after MAP_LOAD_TIMEOUT_MS instead of hanging f
   await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
 });
 
+test('the tile worker actually starts: a loadable style requests tiles, finishes loading, and renders fetched toilets as markers (docs/adr/0026)', async ({
+  page,
+}) => {
+  // The worker exists to fetch tiles, so a tile request is direct proof it
+  // booted; a marker is proof `load` then fired, since MapShell adds markers
+  // only once it has (`mapReady`). Without the explicit worker URL
+  // (docs/adr/0026-maplibre-worker-static-asset.md) the bundled default
+  // resolves to nothing usable: the style and TileJSON still load, controls
+  // and attribution still appear, but no tile is ever requested and `load`
+  // never fires — the live site's blank map. The style is this test's own:
+  // a vector source whose tiles this test answers with 404, which MapLibre
+  // treats as "no tile here" rather than an error, so `load` fires exactly
+  // when a worker has made the request and reported back.
+  const tileUrlPrefix = 'https://tiles.openfreemap.org/__test-tiles__/';
+  const cors = { 'access-control-allow-origin': '*' };
+  await page.route('https://tiles.openfreemap.org/**', (route) => {
+    if (route.request().url().startsWith(tileUrlPrefix)) {
+      return route.fulfill({ status: 404, headers: cors, body: '' });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: cors,
+      body: JSON.stringify({
+        version: 8,
+        sources: {
+          test: { type: 'vector', tiles: [`${tileUrlPrefix}{z}/{x}/{y}.pbf`], maxzoom: 14 },
+        },
+        layers: [
+          { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } },
+          {
+            id: 'water',
+            type: 'fill',
+            source: 'test',
+            'source-layer': 'water',
+            paint: { 'fill-color': '#000000' },
+          },
+        ],
+      }),
+    });
+  });
+  await page.route('**/api/toilets/nearby', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            id: '11111111-1111-1111-1111-111111111111',
+            name: 'Toaleta Testowa',
+            lat: 52.2297,
+            lng: 21.0122,
+            distanceMeters: 239.6,
+            approxWalkingMinutes: 4,
+            openingStatus: 'UNKNOWN',
+            priceState: 'free',
+            confidenceLevel: 'low',
+            accessType: 'public_unconditional',
+            features: { wheelchair: 'unknown', changingTable: 'unknown', unisex: 'unknown' },
+          },
+        ],
+      }),
+    }),
+  );
+
+  const firstTileRequest = page.waitForRequest((request) =>
+    request.url().startsWith(tileUrlPrefix),
+  );
+  await page.goto('/pl');
+  await page.getByRole('button', { name: 'NIE TERAZ' }).click();
+
+  expect((await firstTileRequest).url()).toMatch(/\/\d+\/\d+\/\d+\.pbf$/);
+  // The marker's accessible name is buildMarkerLabel's "<name>, <metres> m";
+  // the bottom preview's is different, so this cannot match that instead.
+  await expect(page.getByRole('button', { name: 'Toaleta Testowa, 240 m' })).toBeVisible();
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toHaveCount(0);
+});
+
 test('the switch changes every string and the lang attribute, map fallback included', async ({
   page,
 }) => {

@@ -6,6 +6,7 @@ import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { isWithinWarsawBbox } from '@/lib/geo/warsaw';
 import { requestLocation, type LocationResult } from '@/lib/geolocation/request-location';
 import { MAP_STYLE_URL } from '@/lib/map/tile-provider';
+import { MAP_WORKER_URL } from '@/lib/map/worker-url';
 import {
   WARSAW_CENTER,
   WARSAW_CENTER_LAT,
@@ -169,8 +170,14 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     // no longer an a-priori signal that loading would be pointless
     // (`docs/adr/0024-openfreemap-tile-provider.md`).
     Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])
-      .then(([{ Map: MapLibreMap, NavigationControl }]) => {
+      .then(([{ Map: MapLibreMap, NavigationControl, setWorkerUrl }]) => {
         if (cancelled || !containerRef.current) return;
+
+        // Before the first map is constructed, which is what starts the
+        // worker pool: the bundled default resolves to nothing usable, and
+        // a map whose worker never boots loads its style and then never
+        // requests a single tile (`lib/map/worker-url.ts`).
+        setWorkerUrl(MAP_WORKER_URL);
 
         // attributionControl defaults on; OpenStreetMap's own data licence
         // requires visible attribution wherever the map is displayed,

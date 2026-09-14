@@ -34,3 +34,7 @@ blob-report/
 
 # ingestion raw responses (never committed)
 .ingest-output/
+
+# MapLibre's worker module, copied from node_modules before every dev/build
+# by scripts/map/copy-maplibre-worker.ts (see lib/map/worker-url.ts)
+public/maplibre-gl/

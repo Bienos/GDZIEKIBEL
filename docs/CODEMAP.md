@@ -196,6 +196,14 @@ lib/
                       setup) — no key needed; the one place that knows
                       the provider's URL
   map/warsaw-view.ts  initial camera position and pan limits for the map shell
+  map/worker-url.ts   `MAP_WORKER_URL`: where the browser loads MapLibre's
+                      tile-loading worker from (ADR 0026) — the bundled
+                      default resolves to nothing usable under Turbopack,
+                      which silently stops every tile request
+  map/worker-assets.ts
+                      copies that worker, and the sibling module it
+                      imports, out of the installed package; used by the
+                      copy script below, kept here so it is unit-testable
   geolocation/request-location.ts
                       wraps navigator.geolocation in one promise, classified
                       into granted/denied/unavailable/timeout/error
@@ -422,6 +430,11 @@ scripts/
                       exists as already-run, stopping at the first one
                       that genuinely is not, so db:migrate applies only
                       what is truly missing
+  map/copy-maplibre-worker.ts
+                      copies MapLibre's worker into public/ (pnpm
+                      map:copy-worker), run first by both dev and build
+                      so the served worker always matches the bundled
+                      library version (ADR 0026); output is gitignored
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
                       warning summary for raw opening-hours text that did
                       not parse (TASK-013), never a silent drop
