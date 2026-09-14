@@ -52,6 +52,39 @@ loading is a best-effort `dotenv` read that no-ops when the file is
 absent, leaving `process.env` — and therefore Vercel's own injected
 `DATABASE_URL` — untouched and authoritative.
 
+### A second, real gap this decision itself surfaced: `pgmigrations` did not match reality
+
+The first deployment with this build command failed outright:
+`node-pg-migrate` tried to run every migration from the start and hit
+`error: type "access_type" already exists`. The real schema objects
+already existed on this database — created out of band, earlier this
+session, before this session's own access to it was lost — but
+`node-pg-migrate`'s own bookkeeping table (`pgmigrations`) had no record
+of it, so it had no way to know anything had already run.
+
+`scripts/db/reconcile-migration-history.ts` (`pnpm
+db:reconcile-migration-history`, run immediately before `db:migrate` in
+`buildCommand`) fixes this once: for each migration, in order, it checks
+whether that migration's own defining object genuinely exists (a table,
+a column, an extension — whichever that migration creates), and inserts
+a `pgmigrations` row for it only if so and not already recorded. It
+stops at the first migration whose object does not exist, since
+migrations are strictly sequential; that migration (and any after it)
+is left for the ordinary `db:migrate` step that follows to apply for
+real. Verified against a throwaway local Postgres database before
+touching production again: applied the first seven migrations' raw SQL
+directly (simulating the exact mismatch), confirmed the script correctly
+recorded exactly those seven and stopped at the eighth, then confirmed a
+real `db:migrate` run afterward applied only that eighth migration with
+no conflict.
+
+Safe to run on every future deploy — an already-reconciled or
+freshly-migrated database has nothing left to insert — but it exists to
+fix one specific historical mismatch, not as a permanent feature; the
+plan is to remove it from `buildCommand` again once a deploy confirms
+the real database is fully caught up, leaving just `pnpm db:migrate &&
+pnpm build`.
+
 ## Consequences
 
 - A migration error, or the database being briefly unreachable, now

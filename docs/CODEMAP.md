@@ -414,6 +414,14 @@ db/
                       limits never share one counter
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
+  db/reconcile-migration-history.ts
+                      one-time fix (ADR 0025) for a database whose schema
+                      was created out of band, so node-pg-migrate's own
+                      bookkeeping table doesn't know what already exists;
+                      records each migration whose real object already
+                      exists as already-run, stopping at the first one
+                      that genuinely is not, so db:migrate applies only
+                      what is truly missing
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
                       warning summary for raw opening-hours text that did
                       not parse (TASK-013), never a silent drop
@@ -445,8 +453,11 @@ Ownership:
 - `.nvmrc`, `package.json` `engines` — Node runtime expectation
 - `.env.example` — variable names only
 - `vercel.json` — framework, lockfile-enforced install, security headers,
-  and `pnpm db:migrate && pnpm build` as the build command (ADR 0025) —
-  every deploy applies pending migrations first
+  and `pnpm db:reconcile-migration-history && pnpm db:migrate && pnpm
+  build` as the build command (ADR 0025) — every deploy reconciles then
+  applies pending migrations first; the reconcile step is a one-time fix
+  for a real historical mismatch, planned for removal once confirmed
+  caught up
 - `.github/workflows/ci.yml` — `quality`, `database` and `e2e` jobs
 - `.github/dependabot.yml` — weekly npm and github-actions update checks
   (TASK-029)

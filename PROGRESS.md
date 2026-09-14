@@ -2162,11 +2162,23 @@ inline shell environment variable for a direct connectivity test, never
 written to any file this session could commit, and confirmed absent
 from the working tree before staging anything.
 
-Not yet confirmed: whether the next real deployment's build-time
-migration actually applies the missing `analytics_rate_limit_windows`
-table (and any other gap) successfully — this note records the fix and
-the reasoning, not yet its own outcome, which the next deploy and a
-fresh runtime-log check will confirm.
+**That first deploy failed outright, revealing a second real gap.**
+`node-pg-migrate` tried to run every migration from scratch and hit
+`error: type "access_type" already exists` (real build logs, checked
+directly, not assumed): this database's schema objects already existed —
+created out of band earlier this session, before this session's own
+access to it was lost — but `node-pg-migrate`'s own `pgmigrations`
+bookkeeping table had no record of any of it. Fixed with
+`scripts/db/reconcile-migration-history.ts`
+(`docs/adr/0025-build-time-migrations.md`): checks each migration's own
+defining object for real existence, in order, and records it as already
+run only when genuinely present, stopping at the first one that is not —
+proven correct first against a throwaway local database seeded with the
+same mismatch (the first seven migrations' raw SQL applied directly,
+`pgmigrations` absent), confirming it recorded exactly those seven and
+let a real `db:migrate` run apply only the genuinely missing eighth with
+no conflict. Wired in as `pnpm db:reconcile-migration-history && pnpm
+db:migrate && pnpm build`.
 
 ## Verification at current baseline
 
