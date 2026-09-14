@@ -30,14 +30,25 @@ app/
   api/toilets/nearby/route.ts
                       POST only; bounded nearby active toilets, filtered
                       (TASK-016, ADR 0011) and reordered by
-                      rankNearbyToilets (TASK-009)
+                      rankNearbyToilets (TASK-009); also logs the
+                      server-observed `results_loaded`/`no_results` and,
+                      when a filter is active, `filter_applied` analytics
+                      events (TASK-023, ADR 0018)
   api/toilets/[id]/reports/route.ts
                       POST only; a validated, anonymous, rate-limited
                       report (TASK-020 ADR 0015, TASK-021 ADR 0016): the
                       rate limit is checked first (429 with Retry-After
                       over 5/hour per hashed IP), then 400 for a malformed
                       id or invalid body, 404 for a well-formed but unknown
-                      toilet id, 201 with the created report's id on success
+                      toilet id, 201 with the created report's id on
+                      success, which also logs the server-observed
+                      `report_submitted` analytics event (TASK-023, ADR 0018)
+  api/analytics/events/route.ts
+                      POST only; a validated, anonymous first-party
+                      analytics event (TASK-023, ADR 0018): 400 for an
+                      unrecognised `eventName`, 201 on success; the write
+                      itself never fails the request (insertAnalyticsEvent
+                      never throws)
   globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
@@ -58,7 +69,13 @@ components/
                       (TASK-018, ADR 0013) is checked before either the
                       marker or `grantedCoords` are touched, so it never
                       reaches the fetch/ranking/marker code, and gets its
-                      own `outside` screen distinct from `denied`
+                      own `outside` screen distinct from `denied`; also
+                      fires the client-only analytics events (TASK-023, ADR
+                      0018) — `app_opened` on mount, `location_granted`/
+                      `location_denied` from the permission flow, and
+                      `toilet_selected` wherever a marker, list row, or the
+                      preview selects a toilet — each via `reportEvent`,
+                      which never throws
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -76,7 +93,9 @@ components/
                       accessibility features, confidence hint, and a report
                       control (TASK-020, ADR 0015) that opens ReportSheet in
                       place of this sheet; no hours yet (see the task file
-                      for why)
+                      for why); the navigation CTA also fires the
+                      client-only `navigation_clicked` analytics event
+                      (TASK-023, ADR 0018)
   map/ReportSheet.tsx  the report flow (TASK-020, DESIGN.md 9.4 position 8,
                       ADR 0015): the seven BRAND.md "Reporting" reasons as
                       radios, an optional note, WYŚLIJ ZGŁOSZENIE; success
@@ -196,6 +215,17 @@ lib/
                       0016): one-hour fixed window, 5 requests, a SHA-256
                       hash of the client's IP (never the raw address); pure
                       window/key logic plus x-forwarded-for extraction
+  analytics/types.ts  EVENT_NAMES, the nine documented FR-09 events
+                      (TASK-023, ADR 0018), mirroring the SQL
+                      analytics_event_name enum
+  analytics/analytics-request.ts
+                      validates an analytics POST body: exactly one known
+                      `eventName`, nothing else (TASK-023)
+  analytics/report-event.ts
+                      client-side call to POST /api/analytics/events; never
+                      throws and never rejects — a caller fires it without
+                      awaiting, and a failure here must never look like the
+                      feature it is attached to broke (TASK-023)
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
@@ -244,6 +274,12 @@ db/
                       query itself excludes same-source toilets, the one
                       guarantee that keeps today's single-source ingestion
                       provably unaffected
+  queries/analytics.ts
+                      insertAnalyticsEvent (TASK-023, ADR 0018): writes
+                      `event_name` and a server-assigned `occurred_at`
+                      only; wrapped so a write failure never throws —
+                      analytics must never fail the request it is
+                      attached to
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -260,6 +296,10 @@ db/
     *_add-dedup-candidates.sql
                       adds dedup_candidates, dedup_candidate_status
                       (TASK-022, ADR 0017)
+    *_add-analytics-events.sql
+                      adds analytics_events, analytics_event_name
+                      (TASK-023, ADR 0018); no location/session/device
+                      column
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -362,6 +402,14 @@ Ownership:
   toilet's own columns. No real second source is reachable — a fresh
   egress check from the Warsaw/OSM-allowlisted environment on 2026-09-14
   confirmed it, so the matching engine is proven against fixtures only.
+- `docs/adr/0018-first-party-analytics.md` — Postgres, not an external
+  provider, resolving `ARCHITECTURE.md`'s open analytics-provider question
+  the same way `ADR 0016` resolved rate limiting; `analytics_events` holds
+  only `event_name` and a server-assigned `occurred_at` — no coordinate,
+  session, or device column exists to leak; `insertAnalyticsEvent` never
+  throws, so a write failure can never fail the request it is attached to;
+  the endpoint is deliberately not rate-limited, a named gap mirroring
+  `TASK-020`'s own reports endpoint before `TASK-021`.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -450,8 +498,21 @@ environment on 2026-09-14 confirmed `dane.um.warszawa.pl`,
 fail). Today's real, single-source OSM ingestion is provably unaffected:
 same-source candidates are never even queried, verified by the complete
 pre-existing ingestion test suite passing unmodified. No moderation UI
-reads `dedup_candidates.status` yet. No analytics or error-tracking code
-exists. Ingestion exists but has never run against the live source — so
+reads `dedup_candidates.status` yet. First-party analytics now exists
+(TASK-023, ADR 0018): nine `PRODUCT.md` FR-09 events — `app_opened`,
+`location_granted`, `location_denied`, `results_loaded`, `no_results`,
+`toilet_selected`, `navigation_clicked`, `filter_applied`,
+`report_submitted` — are logged to a real `analytics_events` table holding
+only an event name and a server-assigned timestamp, never a coordinate,
+session, or device identifier. Four are already server-observed inside the
+two existing route handlers; five are genuinely client-only and reach
+`POST /api/analytics/events` through `reportEvent`, which never throws —
+verified with a real curl/DB smoke test against a running production
+build covering all nine events, an insert/400 pair on the endpoint
+itself, and a direct `information_schema` query confirming the table's
+three columns. The endpoint is not rate-limited, a named gap mirroring
+the report endpoint's own gap before TASK-021. No error-tracking code
+exists yet. Ingestion exists but has never run against the live source — so
 the opening-hours and charge parsers, and the confidence computation,
 have never seen a real OSM string, only constructed fixtures matching
 their documented grammars — and the map — tiles, the location dot, and

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { reportEvent } from '@/lib/analytics/report-event';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { isWithinWarsawBbox } from '@/lib/geo/warsaw';
 import { requestLocation, type LocationResult } from '@/lib/geolocation/request-location';
@@ -38,6 +39,11 @@ import styles from './MapShell.module.css';
  * tell an active filter apart from a genuinely thin radius, and the
  * outside-Warsaw screen (TASK-018, `docs/adr/0013-outside-warsaw-behaviour.md`),
  * which keeps a real but out-of-area grant from ever reaching any of it.
+ * Reports `app_opened`/`location_granted`/`location_denied`/`toilet_selected`
+ * (TASK-023, `docs/adr/0018-first-party-analytics.md`) — the funnel events
+ * that only ever happen in the browser; `navigation_clicked` is reported
+ * from `ToiletDetailSheet.tsx` itself, and the remaining four events are
+ * logged server-side, where the request already reveals them.
  *
  * When no tile provider key is configured, `maplibre-gl` is never imported or
  * initialised. The component renders the literal fallback state instead, per
@@ -117,6 +123,10 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   // NEXT_PUBLIC_ variables must be referenced literally for Next.js to inline
   // them at build time; wrapping this read in a helper would leave it empty.
   const styleUrl = buildMapStyleUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY);
+
+  useEffect(() => {
+    void reportEvent('app_opened');
+  }, []);
 
   useEffect(() => {
     if (!styleUrl || !containerRef.current) return;
@@ -244,7 +254,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
           toilet,
           styles.toiletMarker ?? '',
           styles.toiletMarkerSelected ?? '',
-          () => setSelectedId(toilet.id),
+          () => selectToilet(toilet.id),
         );
         const marker = new Marker({ element })
           .setLngLat({ lng: toilet.lng, lat: toilet.lat })
@@ -290,6 +300,10 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     const result = await requestLocation();
 
     if (result.status === 'granted') {
+      // The browser's own permission outcome, independent of whether the
+      // coordinates turn out to be usable (TASK-023) — the outside-Warsaw
+      // case below is still a real grant.
+      void reportEvent('location_granted');
       // Checked before either the marker or `grantedCoords` are touched
       // (TASK-018, ADR 0013): a coordinate outside the supported area must
       // never reach the fetch/ranking/marker code that assumes a usable
@@ -307,7 +321,15 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     // Every non-grant outcome (denied, unavailable, timeout, error) shares
     // one screen; BRAND.md and DESIGN.md give one copy variant for all of
     // them, not one each.
+    void reportEvent('location_denied');
     setLocationFlow('denied');
+  }
+
+  /** Fires `toilet_selected` (TASK-023) once, from the one place every
+   * selection path (marker, preview, list row) funnels through. */
+  function selectToilet(id: string) {
+    void reportEvent('toilet_selected');
+    setSelectedId(id);
   }
 
   const selectedToilet = toilets.find((toilet) => toilet.id === selectedId) ?? null;
@@ -335,7 +357,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         <ToiletListView
           toilets={toilets}
           dictionary={dictionary}
-          onSelect={(id) => setSelectedId(id)}
+          onSelect={(id) => selectToilet(id)}
         />
       ) : !styleUrl || tilesFailed ? (
         <div className={styles.fallback} role="status">
@@ -408,7 +430,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
             <NearestToiletPreview
               toilet={recommendedToilet}
               dictionary={dictionary}
-              onSelect={() => setSelectedId(recommendedToilet.id)}
+              onSelect={() => selectToilet(recommendedToilet.id)}
             />
           )
         ))}

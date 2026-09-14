@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { getPool } from '@/db/client';
 import { findNearbyToilets } from '@/db/queries/nearby';
 import { filterNearbyToilets } from '@/lib/toilets/filter-nearby';
@@ -27,6 +28,11 @@ import { rankNearbyToilets } from '@/lib/toilets/rank-nearby';
  *
  * Never logs the request body or the parsed coordinates, on either the
  * success or the failure path, per `ARCHITECTURE.md` section 8.
+ *
+ * Also logs `results_loaded`/`no_results` and, when any filter is active,
+ * `filter_applied` (TASK-023: `docs/adr/0018-first-party-analytics.md`) —
+ * this route already computes the ranked count and already receives
+ * `filters`, so no separate client round trip is needed for either event.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -45,6 +51,12 @@ export async function POST(request: Request) {
   const rows = await findNearbyToilets(getPool(), validation.params);
   const filtered = filterNearbyToilets(rows, validation.params.filters, now);
   const ranked = rankNearbyToilets(filtered);
+
+  const pool = getPool();
+  await insertAnalyticsEvent(pool, ranked.length > 0 ? 'results_loaded' : 'no_results');
+  if (Object.keys(validation.params.filters).length > 0) {
+    await insertAnalyticsEvent(pool, 'filter_applied');
+  }
 
   return NextResponse.json({ results: ranked.map((row) => toNearbyResult(row, now)) });
 }

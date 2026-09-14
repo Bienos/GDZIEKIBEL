@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { getPool } from '@/db/client';
 import { checkAndIncrementRateLimit } from '@/db/queries/report-rate-limit';
 import { insertReport, toiletExists } from '@/db/queries/reports';
@@ -23,6 +24,11 @@ import {
  * validation work either. Never stores location, an IP, or any device
  * identifier: the rate limiter stores a one-way hash and a count, the
  * report itself carries only `issueType` and an optional `note`.
+ *
+ * Also logs `report_submitted` (TASK-023:
+ * `docs/adr/0018-first-party-analytics.md`) once `insertReport` actually
+ * succeeds — this route already knows that instant, so no separate
+ * client round trip is needed for the event either.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const pool = getPool();
@@ -63,6 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const report = await insertReport(pool, { toiletId: idValidation.id, ...validation.params });
+  await insertAnalyticsEvent(pool, 'report_submitted');
 
   return NextResponse.json({ ok: true, reportId: report.id }, { status: 201 });
 }

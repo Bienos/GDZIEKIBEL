@@ -1286,6 +1286,90 @@ adapt to), any moderation UI or code reading/changing
 `address` yet), and any change to ranking, confidence computation, or
 existing single-source ingestion behaviour.
 
+### TASK-023 — Analytics instrumentation
+
+Complete on 2026-09-14. Specified in
+`tasks/023-analytics-instrumentation.md`; decision recorded in
+`docs/adr/0018-first-party-analytics.md`.
+
+**Postgres, not a named provider — the same resolution as TASK-021.**
+`ARCHITECTURE.md`'s own "Analytics" section names PostHog or Plausible
+"after privacy review," and section 23 lists "exact analytics provider" as
+still requiring validation; no account or key for either exists in this
+project. Rather than invent one or leave the task undone, this task built
+the minimal first-party event log on the Postgres database this project
+already has — the identical reasoning `docs/adr/0016-report-rate-limiting.md`
+used for the rate limiter, now reused for analytics.
+
+**Nine events, four already server-observed.** `PRODUCT.md` section 13's
+FR-09 names the funnel exactly: `app_opened`, `location_granted`,
+`location_denied`, `results_loaded`, `no_results`, `toilet_selected`,
+`navigation_clicked`, `filter_applied`, `report_submitted`. Mapping each to
+its natural trigger point showed four are already visible inside the two
+existing route handlers with no new network call needed —
+`results_loaded`/`no_results`/`filter_applied` inside
+`POST /api/toilets/nearby`, `report_submitted` inside
+`POST /api/toilets/:id/reports` — leaving five genuinely client-only events
+needing a new endpoint.
+
+**No coordinate, session, or device column exists to leak.** This is the
+task's real constraint (`ARCHITECTURE.md` section 14's "Do not include
+precise coordinates in analytics events," section 17's "Do not log:
+precise user coordinates," `PRODUCT.md` section 20's "no precise user
+location is stored in product analytics/database"): `analytics_events`
+holds exactly `id`, `event_name`, and a server-assigned `occurred_at` — no
+column exists for a future change to accidentally populate with a
+coordinate. `location_granted`/`location_denied` fire from the permission
+flow itself, never from the coordinate value.
+
+**Never throws, at every layer.** `insertAnalyticsEvent` (server) and
+`reportEvent` (client) both swallow every failure and resolve `undefined`
+regardless — mirroring `lib/reports/submit-report.ts`'s shape, but with no
+meaningful failure for a caller to react to: an analytics failure must
+never look like the feature it is attached to broke. Proved directly: an
+integration test passes an event name the SQL enum rejects and asserts the
+call still resolves and writes nothing.
+
+Created: a migration adding `analytics_event_name` (9 members) and
+`analytics_events` (`id`, `event_name`, `occurred_at` only).
+`lib/analytics/types.ts` (`EVENT_NAMES`). `lib/analytics/analytics-request.ts`
+(`parseAnalyticsRequest`). `lib/analytics/report-event.ts` (client
+`reportEvent`, never throws). `db/queries/analytics.ts`
+(`insertAnalyticsEvent`, never throws). `app/api/analytics/events/route.ts`
+(POST only, 400/201). `MapShell.tsx` fires `app_opened` on mount,
+`location_granted`/`location_denied` from the permission flow, and
+`toilet_selected` from every path that selects a toilet (marker, list row,
+preview) via a new `selectToilet` helper. `ToiletDetailSheet.tsx`'s
+navigation CTA fires `navigation_clicked`. `app/api/toilets/nearby/route.ts`
+and `app/api/toilets/[id]/reports/route.ts` each gained one
+`insertAnalyticsEvent` call after computing their own real outcome.
+
+Verified: lint, format, typecheck, 259 unit tests (10 new — the
+`analytics_event_name`/`EVENT_NAMES` enum-parity test, `parseAnalyticsRequest`,
+and `reportEvent`'s never-throws behaviour on a non-2xx response and on a
+rejected fetch), 46 integration tests (3 new — a real row with a
+server-assigned timestamp, the table's exact three columns, and a rejected
+enum value still resolving without writing a row), the production build,
+and 19 Playwright tests (1 new: opening a toilet detail sheet and clicking
+`PROWADŹ MNIE` while `/api/analytics/events` is mocked observes
+`app_opened`, `toilet_selected`, and `navigation_clicked` all actually
+reach the endpoint with the expected `eventName`). Independently confirmed
+with a real curl/DB smoke test against a running production build and a
+real PostgreSQL database: all nine events land with a `201`/insert (a
+fixture toilet and report were used for `report_submitted`, then removed),
+an unrecognised `eventName` returns `400` with no row written, and a direct
+`information_schema.columns` query confirms `analytics_events` has exactly
+`id`, `event_name`, `occurred_at` — no coordinate, session, or device
+column exists. All smoke-test rows/fixtures were deleted afterward.
+
+Not created, by design: rate limiting on `/api/analytics/events` (`PLAN.md`'s
+TASK-023 outcome text does not mention abuse controls; the same gap
+`TASK-020` left for reports before `TASK-021` closed it), a session or
+device identifier of any kind, any dashboard or query surface reading
+`analytics_events` (nothing yet needs one), and any change to an existing
+route's response shape (each new `insertAnalyticsEvent` call is additive,
+after the response body is already decided).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1321,12 +1405,12 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 249 tests in 32 files                          |
+| `pnpm test:unit`          | pass, 259 tests in 35 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 43 tests in 7 files                            |
-| `pnpm test:e2e`           | pass, 18 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, and the report flow's success and failure/retry states) |
+| `pnpm test:integration`   | pass, 46 tests in 8 files                            |
+| `pnpm test:e2e`           | pass, 19 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, the report flow's success and failure/retry states, and client-triggered analytics events reaching the endpoint) |
 
 Also observed:
 
@@ -1418,28 +1502,30 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-023 — Analytics instrumentation` per `PLAN.md` (Milestone 4 —
-   Product quality): "core funnel events are captured without precise
-   location." Needs a `tasks/023-*.md` file. `PRODUCT.md` section 13's
-   FR-09 names the funnel exactly: app opened, location granted/denied,
-   nearby results loaded, toilet selected, navigation clicked, filter
-   applied, report submitted, no-results state — every one of these
-   already has a concrete trigger point in the existing code
-   (`MapShell.tsx`'s `locationFlow` transitions, the nearby-fetch effect,
-   `selectedId`, the navigation `<a>`, `activeFilters`, `ReportSheet`'s
-   submit, `noResultsVisible`). Section 14's privacy requirements are the
-   real constraint to design against first: "Do not include precise
-   coordinates in analytics events," "Avoid third-party trackers not
-   needed for the product," "Document all external services that receive
-   IP/location-derived information." `ARCHITECTURE.md` section 20 lists
-   "analytics key (if enabled)" as an optional environment variable and
-   section 21 rules out adopting infrastructure without evidence — so
-   before writing any event-sending code, this task's first real decision
-   is the same shape as `TASK-021`'s rate-limiter question: which
-   analytics destination (a real provider needing an account/key this
-   session cannot create, or a minimal first-party event log reusing
-   Postgres, matching this project's demonstrated preference for not
-   introducing external services without evidence) and whether that
-   decision can even be made without the project owner naming a real
-   provider. `PROGRESS.md`'s own "Known unresolved decisions" already
-   lists "Final analytics provider" as unresolved.
+2. `TASK-024 — Error tracking / privacy scrubbing` per `PLAN.md` (Milestone 4
+   — Product quality): "runtime errors are observable and location/
+   request-body leakage is prevented." Needs a `tasks/024-*.md` file.
+   `ARCHITECTURE.md`'s "Error tracking" section names "Sentry or
+   equivalent" and requires it to "scrub request bodies/headers where they
+   could contain location or user-entered notes"; section 17
+   (Observability) is the more actionable list — track "request error
+   rate, nearby query latency, DB errors, ingestion failures, report
+   submission failures, map/provider load failures where measurable," but
+   never log "precise user coordinates, full request bodies for location
+   endpoint, secrets, excessive raw source datasets." Section 20 lists
+   "error tracking DSN (if enabled)" as an optional environment variable,
+   and section 23 still lists the exact provider as unvalidated.
+   `PRODUCT.md` section 20 folds this into MVP readiness: "logging/error
+   tracking is configured without leaking sensitive values." This is the
+   same shape of question `TASK-021` and `TASK-023` both already answered
+   the same way: no Sentry (or equivalent) account/key exists in this
+   project, so the first real decision is again whether to adopt a named
+   external provider (impossible without credentials this session cannot
+   create) or build the smallest first-party equivalent — here, likely
+   structured server-side error logging with an explicit scrubbing step
+   for anything resembling a coordinate, an `Authorization` header, or a
+   report's free-text `note`, proven with a test that feeds a real error
+   containing a fabricated coordinate/note through the scrubber and asserts
+   neither survives. `docs/adr/0016-report-rate-limiting.md` and
+   `docs/adr/0018-first-party-analytics.md` are the two precedents to read
+   first.

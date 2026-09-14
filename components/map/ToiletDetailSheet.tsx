@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { reportEvent } from '@/lib/analytics/report-event';
 import { buildWalkingNavigationUrl } from '@/lib/external-navigation/build-navigation-url';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { confidenceLabel, featureStateLabel } from '@/lib/toilets/detail-copy';
@@ -29,7 +30,10 @@ const STATUS_BADGE_CLASS: Record<ReturnType<typeof openingStatusVariant>, string
  * three payment-method facts TASK-014 normalises, a data-confidence hint,
  * and a report control (TASK-020, `docs/adr/0015-toilet-reports.md`),
  * position 8, opening `ReportSheet` in place of this sheet. No hours yet —
- * see `tasks/011-toilet-detail-sheet.md` for why.
+ * see `tasks/011-toilet-detail-sheet.md` for why. Reports `navigation_clicked`
+ * (TASK-023, `docs/adr/0018-first-party-analytics.md`) on the CTA's own
+ * click, fire-and-forget — the link opens in a new tab, so nothing here
+ * blocks or races the actual navigation.
  */
 export function ToiletDetailSheet({
   toilet,
@@ -89,6 +93,7 @@ export function ToiletDetailSheet({
           href={buildWalkingNavigationUrl({ lat: toilet.lat, lng: toilet.lng })}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => void reportEvent('navigation_clicked')}
         >
           {dictionary.detailNavigateCta}
         </a>

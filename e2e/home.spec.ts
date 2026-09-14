@@ -1,17 +1,18 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013/015/016/017/018 smoke tests: the home
- * page loads with the GdzieKibel.pl identity, the map shell's tile
+ * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023 smoke tests: the
+ * home page loads with the GdzieKibel.pl identity, the map shell's tile
  * fallback state (since no environment available to this suite holds a
  * real MapTiler key — see docs/adr/0005-map-tile-provider.md), the
  * location permission flow, the nearby-toilets fetch, the nearest-toilet
  * preview, the toilet detail sheet it opens into, that sheet's navigation
  * CTA, a real (non-`UNKNOWN`) opening status rendering its own label and
  * colour, the map/list toggle, the filter sheet sending real filters in
- * the nearby request, the no-results overlay's three diagnosed states, and
- * a real location grant from outside Warsaw showing its own distinct
- * screen.
+ * the nearby request, the no-results overlay's three diagnosed states, a
+ * real location grant from outside Warsaw showing its own distinct screen,
+ * the report flow, and that a client-only analytics event actually reaches
+ * `/api/analytics/events` with the expected event name.
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -437,6 +438,24 @@ test('a failed report submission shows a literal failure message and lets the us
 
   await expect(page.getByText('DZIĘKI. SPRAWDZIMY.')).toBeVisible();
   expect(attempt).toBe(2);
+});
+
+test('client-triggered events reach the analytics endpoint (TASK-023)', async ({ page }) => {
+  const eventNames: string[] = [];
+  await page.route('**/api/analytics/events', async (route) => {
+    const body = route.request().postDataJSON() as { eventName: string };
+    eventNames.push(body.eventName);
+    await route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+  });
+
+  await openReportTestDetailSheet(page);
+  await expect.poll(() => eventNames).toContain('app_opened');
+  await expect.poll(() => eventNames).toContain('toilet_selected');
+
+  const navigateLink = page.getByRole('dialog').getByRole('link', { name: 'PROWADŹ MNIE' });
+  await navigateLink.click({ noWaitAfter: true });
+
+  await expect.poll(() => eventNames).toContain('navigation_clicked');
 });
 
 test('a real OPEN status renders its own label and colour, not the uncertain one (TASK-013)', async ({
