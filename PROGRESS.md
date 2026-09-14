@@ -1460,6 +1460,99 @@ eventual features, not this task's minimum), and any change to client-side
 error handling (`fetchNearbyToilets`, `submitReport`, `reportEvent` already
 never throw, which is correct and outside this task's scope).
 
+### TASK-025 — Performance pass
+
+Complete on 2026-09-14. Specified in `tasks/025-performance-pass.md`;
+decision recorded in `docs/adr/0020-lazy-load-map-library-styles.md`.
+
+**Measured first, fixed only what the measurement proved.** `PRODUCT.md`
+section 16 sets no performance numbers, explicitly deferring "concrete
+performance budgets" until "after baseline measurement" — so this task's
+first step was a real Lighthouse mobile run (`npx lighthouse`, using the
+pre-installed Chromium at `/opt/pw-browsers/chromium-1194`, simulated
+throttling, 390×844 viewport) against `pnpm build && pnpm start`, plus
+this Next.js version's own built-in Turbopack bundle analyzer (`pnpm next
+experimental-analyze --output` — no new dependency; `@next/bundle-analyzer`
+is the webpack-only tool and this project builds with Turbopack, per
+`node_modules/next/dist/docs/01-app/02-guides/package-bundling.md`).
+
+**A real, measured finding: the map library's CSS was never lazy.**
+`components/map/MapShell.tsx` already dynamically imports the
+`maplibre-gl` *script*, with its own doc comment stating the ~200 KB
+library "is never fetched... on the fallback path." Its *stylesheet*
+(`maplibre-gl/dist/maplibre-gl.css`, ~83 KB raw) was still imported
+unconditionally in `app/globals.css`, downloaded on every page view —
+including the fallback state this session's environment always exercises
+(no `NEXT_PUBLIC_MAPTILER_KEY`). Lighthouse's `unused-css-rules` audit
+caught this directly: score `0.5`, flagging 10,844 of 11,054 transferred
+bytes (98%) as unused on that page.
+
+**Fix: the CSS follows the same load gate as the script that needs it.**
+`Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])`
+now gates both, and the `Map` instance is constructed only once both
+resolve — so the map's own DOM (canvas, controls) is never created before
+its styles have loaded, on the one path that loads both. Removed the
+unconditional import from `globals.css`. This generalises: any future
+library's CSS should follow the same rule as its script, not
+`globals.css`, exactly the pattern the script's own prior comment already
+half-stated.
+
+**Measured result** (same real Lighthouse run, before/after, fallback
+path):
+
+| Metric                    | Before  | After                      |
+| -------------------------- | ------- | --------------------------- |
+| `unused-css-rules` audit    | 0.5 (11 KiB est. savings) | 1.0 (nothing flagged) |
+| Total page byte weight      | 257 KiB | 247 KiB                      |
+| Total Blocking Time          | 170 ms  | 130 ms / 50 ms (two runs)   |
+| Time to Interactive          | 2.6 s   | 2.4 s                        |
+| Performance score            | 97      | 97 / 98 (two runs)          |
+
+Largest Contentful Paint moved within normal simulated-lab run-to-run
+noise (2.1 s / 2.4 s / 2.3 s across three runs of the same build) — named
+honestly as noise, not claimed as either a regression or an improvement,
+since the fallback page's LCP element does not depend on this CSS. The
+Performance score was already near-ceiling (97/100) before this change,
+since the fallback page is light — the real, measured win is dead-weight
+and blocking-time reduction, not a headline score move.
+
+**Proven with a real regression test, not just a measurement.** A new
+Playwright test intercepts every `.css` response on the fallback path and
+asserts none contains maplibre-gl's own `.maplibregl-` class prefix
+(response-body content, not a URL substring — chunk filenames are
+content-hashed, so a URL check would prove nothing). Verified this is a
+real regression test, not a vacuous one: with the fix reverted, the same
+test fails, showing the maplibre CSS chunk actually being fetched; with
+the fix restored, it passes.
+
+Created: `docs/adr/0020-lazy-load-map-library-styles.md`,
+`tasks/025-performance-pass.md`. `e2e/home.spec.ts` gained one new test.
+
+Modified: `components/map/MapShell.tsx` (the `Promise.all` gate, doc
+comment updates), `app/globals.css` (removed the unconditional
+`maplibre-gl.css` import).
+
+Verified: lint, format, typecheck, 269 unit tests unchanged, 46
+integration tests unchanged (no route/query/schema code touched), the
+production build, and 20 Playwright tests (19 pre-existing, unmodified
+and still passing, plus the 1 new regression test — confirmed to fail
+against the pre-fix code and pass against the fix). A real Lighthouse
+mobile run and a real Turbopack bundle-analyzer run were performed
+before and after, with real numbers quoted above, against a real running
+production build.
+
+Not created, by design: any numeric performance budget (`PRODUCT.md`
+section 16 explicitly defers this until baseline measurement exists, and
+this session's own baseline is fallback-path-only); any new performance-
+monitoring service or dependency (`ARCHITECTURE.md` section 21 rules out
+adopting infrastructure without evidence, and this environment can
+already run Lighthouse and the built-in analyzer with nothing new to
+install); any change to the nearby search response's caching
+(`ARCHITECTURE.md` section 15's `no-store` stays); a real-tile-provider
+performance measurement (still blocked — no
+`NEXT_PUBLIC_MAPTILER_KEY`/egress in this session, the same recorded gap
+as every prior task).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1500,7 +1593,7 @@ before the run.
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
 | `pnpm test:integration`   | pass, 46 tests in 8 files                            |
-| `pnpm test:e2e`           | pass, 19 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, the report flow's success and failure/retry states, and client-triggered analytics events reaching the endpoint) |
+| `pnpm test:e2e`           | pass, 20 tests in the `mobile-chromium` project (map fallback, that the fallback path never fetches maplibre-gl's script or stylesheet, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, the report flow's success and failure/retry states, and client-triggered analytics events reaching the endpoint) |
 
 Also observed:
 
@@ -1618,26 +1711,28 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-025 — Performance pass` per `PLAN.md` (Milestone 4 — Product
-   quality): "measured mobile performance meets agreed budgets or has
-   documented remaining constraints." Needs a `tasks/025-*.md` file.
-   `PRODUCT.md` section 16 names the target experience but deliberately
-   sets no numbers yet: "app shell becomes interactive quickly," "map
-   library should not block the first meaningful call-to-action
-   unnecessarily," "nearby query should normally complete fast enough to
-   feel immediate after geolocation," "avoid downloading all Warsaw toilet
-   data if a bounded nearby query is sufficient," "lazy-load non-critical
-   visuals" — and says explicitly that "concrete performance budgets
-   should be added during foundation/performance tasks after baseline
-   measurement," making this task's first real step a measurement, not an
-   optimisation. `ARCHITECTURE.md` section 15 (Caching) already sets the
-   one binding constraint this task must not weaken: `no-store` on the
-   nearby search response, never a shared cache keyed by precise
-   coordinates — any performance work here must stay inside that, e.g.
-   caching static/config data and map provider assets per section 15's own
-   list, not the location-bearing response itself. A real Lighthouse/mobile
-   performance run needs a real running production build (this session's
-   own `pnpm build && pnpm start` pattern already proven every prior task)
-   and, ideally, the same real `NEXT_PUBLIC_MAPTILER_KEY`/tile access named
-   in item 1 above, since the map library is one of section 16's own named
-   risks to the first meaningful call-to-action.
+2. `TASK-026 — Accessibility pass` per `PLAN.md` (Milestone 4 — Product
+   quality): "map/list/sheets/core flow pass defined keyboard,
+   screen-reader, contrast and touch-target checks." Needs a
+   `tasks/026-*.md` file. `PRODUCT.md` section 15 names the concrete
+   checks: "core flows must be keyboard accessible," "touch targets at
+   least 44x44 CSS px where practical," "sufficient contrast," "do not
+   rely on colour alone for status," "map interactions must have list
+   equivalents," "screen-reader labels for icons and markers," "respect
+   reduced-motion preferences." `DESIGN.md` section 14 restates the same
+   checks with two additions worth auditing directly: "visible focus
+   state" and "bottom sheets maintain logical focus order" — both
+   plausibly already true given `MapShell.tsx`'s existing
+   `askHeadingRef`/`deniedHeadingRef`/`outsideHeadingRef` focus-management
+   pattern (established TASK-006/018), but never yet checked
+   systematically against a real checklist. Given `TASK-025`'s own
+   Lighthouse run already scored `accessibility: 92` on the fallback path
+   (see this session's TASK-025 entry above) with the full JSON report
+   available for its specific findings, this task's first real step is
+   reading that report's accessibility audit details (not re-running
+   Lighthouse blind) before deciding what, if anything, needs a real fix
+   versus what the automated score cannot check (real keyboard-only
+   navigation through the report/filter sheets, real screen-reader
+   labels on the toilet markers `marker-label.ts` already generates,
+   real reduced-motion behaviour). `AGENTS.md`'s own "measure first"
+   discipline `TASK-025` just established applies here too.

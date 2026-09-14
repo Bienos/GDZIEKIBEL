@@ -45,11 +45,13 @@ import styles from './MapShell.module.css';
  * from `ToiletDetailSheet.tsx` itself, and the remaining four events are
  * logged server-side, where the request already reveals them.
  *
- * When no tile provider key is configured, `maplibre-gl` is never imported or
- * initialised. The component renders the literal fallback state instead, per
- * `docs/adr/0005-map-tile-provider.md`. This is not a stub: every environment
- * without a configured key, including a misconfigured production one, needs
- * exactly this behaviour rather than a blank area.
+ * When no tile provider key is configured, `maplibre-gl`'s JS and CSS
+ * (TASK-025, `docs/adr/0020-lazy-load-map-library-styles.md`) are never
+ * imported or initialised. The component renders the literal fallback
+ * state instead, per `docs/adr/0005-map-tile-provider.md`. This is not a
+ * stub: every environment without a configured key, including a
+ * misconfigured production one, needs exactly this behaviour rather than
+ * a blank area.
  */
 
 /**
@@ -140,10 +142,13 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     let hasLoaded = false;
     let map: import('maplibre-gl').Map | undefined;
 
-    // Imported dynamically so the ~200 KB library is never fetched, and never
-    // touches the DOM, on the fallback path.
-    import('maplibre-gl')
-      .then(({ Map: MapLibreMap, NavigationControl }) => {
+    // Imported dynamically so the ~200 KB library, and its ~11 KB (gzipped)
+    // stylesheet, are never fetched on the fallback path (TASK-025,
+    // `docs/adr/0020-lazy-load-map-library-styles.md`) — a real Lighthouse
+    // run found the CSS still loading unconditionally from `globals.css`,
+    // 98% unused, on every page view that never mounts a map.
+    Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])
+      .then(([{ Map: MapLibreMap, NavigationControl }]) => {
         if (cancelled || !containerRef.current) return;
 
         // attributionControl defaults on; MapTiler's terms require it, so it

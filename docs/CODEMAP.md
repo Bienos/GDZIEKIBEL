@@ -56,7 +56,10 @@ app/
                       never throws); an unexpected throw from `getPool()`
                       itself is caught, logged, and answered with a
                       generic 500 (TASK-024, ADR 0019)
-  globals.css         reset, body defaults, imports tokens.css and maplibre-gl.css
+  globals.css         reset, body defaults, imports tokens.css; maplibre-gl's
+                      own stylesheet is not imported here (TASK-025, ADR
+                      0020) — it loads only alongside the script that needs
+                      it, from MapShell.tsx itself
   tokens.css          design tokens (colour, spacing, type) — single source
 components/
   map/MapShell.tsx    the Warsaw map (TASK-005), the location permission
@@ -82,7 +85,10 @@ components/
                       `location_denied` from the permission flow, and
                       `toilet_selected` wherever a marker, list row, or the
                       preview selects a toilet — each via `reportEvent`,
-                      which never throws
+                      which never throws; the `maplibre-gl` script and its
+                      stylesheet load together via one `Promise.all` (TASK-025,
+                      ADR 0020), so the map's own DOM is never created before
+                      its styles have loaded, on the one path that loads both
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -445,6 +451,17 @@ Ownership:
   forced-failure smoke test found (an idle client's connection failing
   with no request in flight was an unstructured, uncaught exception
   before this fix).
+- `docs/adr/0020-lazy-load-map-library-styles.md` — a real mobile
+  Lighthouse run against the fallback path found `maplibre-gl.css` (~83 KB
+  raw) loading unconditionally from `globals.css`, 98% flagged unused;
+  moved into the same `Promise.all` that already lazy-loads the script,
+  so the CSS follows the exact rule the script's own doc comment already
+  stated but did not itself apply to its stylesheet. Measured: the
+  `unused-css-rules` audit went from 0.5 to a perfect 1.0, total byte
+  weight on the fallback page dropped 257→247 KiB. No performance budget
+  is set — `PRODUCT.md` section 16 explicitly defers concrete numbers to
+  after baseline measurement, and this session cannot measure the
+  real-tile-provider path (no `NEXT_PUBLIC_MAPTILER_KEY`/egress here).
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -561,7 +578,18 @@ all three routes returned the generic `500`, the pool's own idle-client
 error logged cleanly instead of the raw, uncaught-exception dump this
 task's own smoke test first found, and no request body or coordinate
 (including one deliberately placed in a report's `note`) ever reached a
-log line. Ingestion exists but has never run against the live source — so
+log line. A real mobile performance baseline now exists for the fallback
+path (TASK-025, ADR 0020): a Lighthouse run against `pnpm build && pnpm
+start` found `maplibre-gl.css` loading unconditionally and 98% unused;
+moving it into the same lazy-load gate as the script it already
+dynamically imports fixed that measurably (`unused-css-rules` 0.5→1.0,
+257→247 KiB total byte weight), proven by a real Playwright test that
+fails without the fix. No numeric performance budget is set yet —
+`PRODUCT.md` section 16 defers that until baseline measurement exists,
+and the real-tile-provider path (the one a user actually experiences with
+a working map) still cannot be measured from this session (no
+`NEXT_PUBLIC_MAPTILER_KEY`/egress here). Ingestion exists but has never
+run against the live source — so
 the opening-hours and charge parsers, and the confidence computation,
 have never seen a real OSM string, only constructed fixtures matching
 their documented grammars — and the map — tiles, the location dot, and

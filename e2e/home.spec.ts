@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023 smoke tests: the
- * home page loads with the GdzieKibel.pl identity, the map shell's tile
- * fallback state (since no environment available to this suite holds a
- * real MapTiler key — see docs/adr/0005-map-tile-provider.md), the
+ * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023/025 smoke
+ * tests: the home page loads with the GdzieKibel.pl identity, the map
+ * shell's tile fallback state (since no environment available to this
+ * suite holds a real MapTiler key — see
+ * docs/adr/0005-map-tile-provider.md), that the fallback path never
+ * fetches maplibre-gl's script or stylesheet (TASK-025,
+ * docs/adr/0020-lazy-load-map-library-styles.md), the
  * location permission flow, the nearby-toilets fetch, the nearest-toilet
  * preview, the toilet detail sheet it opens into, that sheet's navigation
  * CTA, a real (non-`UNKNOWN`) opening status rendering its own label and
@@ -37,6 +40,26 @@ test('the bare domain serves the Polish shell with the map fallback state', asyn
   await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
   await expect(page.getByText('Nie udało się załadować mapy.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'SPRÓBUJ JESZCZE RAZ' })).toBeVisible();
+});
+
+test('the fallback path never fetches maplibre-gl or its stylesheet (TASK-025)', async ({
+  page,
+}) => {
+  // Chunk filenames are content-hashed, so a URL substring check would
+  // prove nothing; the real invariant is that no loaded stylesheet
+  // contains maplibre-gl's own `.maplibregl-*` class prefix.
+  const cssContainingMaplibre: string[] = [];
+  page.on('response', async (response) => {
+    const url = response.url();
+    if (!url.endsWith('.css')) return;
+    const body = await response.text().catch(() => '');
+    if (body.includes('.maplibregl-')) cssContainingMaplibre.push(url);
+  });
+
+  await page.goto('/pl');
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
+
+  expect(cssContainingMaplibre).toEqual([]);
 });
 
 test('the switch changes every string and the lang attribute, map fallback included', async ({
