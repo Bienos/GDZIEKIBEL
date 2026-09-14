@@ -174,8 +174,8 @@ table.
 
 ### TASK-004 — Ingest first Warsaw toilet dataset (OpenStreetMap)
 
-Code complete on 2026-09-13; **not run against the live source**. Specified in
-`tasks/004-ingest-osm-toilets.md`.
+Code complete on 2026-09-13; **the live run recorded below closed the
+remaining gap on 2026-09-14.** Specified in `tasks/004-ingest-osm-toilets.md`.
 
 Created: `lib/ingest/osm/` (fetch, validate, normalize), the source-agnostic
 `lib/ingest/upsert.ts`, and the command `pnpm ingest:osm`. The Warsaw
@@ -202,12 +202,35 @@ all `unknown`, while a node with `access=customers` reads `customers_only` and
 `wheelchair=no`. Absence and negation stayed distinct through the whole
 pipeline.
 
-**Still to do before TASK-004 can be called complete:** one live run from the
-GdzieKibel cloud environment, recording the boundary relation it resolved and
-its counts. This session's egress denies `overpass-api.de`.
+**The live run, 2026-09-14 — TASK-004 is now genuinely complete.** No
+session this whole project has ever had egress to `overpass-api.de`;
+the real Vercel production deployment finally did, the same way it
+already reached the real Supabase database
+(`docs/adr/0025-build-time-migrations.md`).
+Run as a one-off step in `vercel.json`'s `buildCommand`
+(`pnpm ingest:osm`, immediately after `pnpm db:migrate`, removed again
+right after this one confirmed run — never a permanent part of the
+build), against the real, production database, with real build logs
+checked directly afterward, not assumed:
 
-Not created, by design: any deduplication, opening-hours parsing, confidence
-scoring, scheduled workflow, query module or UI.
+| Boundary resolved | Fetched | Created | Updated | Unchanged | Rejected | Not seen |
+| --- | --- | --- | --- | --- | --- | --- |
+| relation 336075 (Warszawa, admin_level 6) | 562 | 562 | 0 | 0 | 0 | 0 |
+
+Three boundary candidates were found (admin_level 6, 7, and 8); the
+code correctly selected the single admin_level 6 one, per its own
+"never guess" rule. 60 of the 562 elements carried an `opening_hours`
+value outside the bounded grammar `lib/opening-hours/parse-opening-hours.ts`
+accepts (e.g. `"06:00-22:00"` with no weekday prefix, a Polish-language
+comment embedded in the value) — each was reported by node id and its
+literal raw text, kept as `UNKNOWN` status rather than silently dropped
+or guessed at, exactly as designed. Real Warsaw toilet data exists in
+the product database for the first time this entire project.
+
+Not created, by design: any deduplication, confidence scoring, or a
+scheduled/recurring workflow — this was one manually-triggered run, not
+the "weekly bounded pull" `docs/adr/0003-first-data-source.md` eventually
+calls for. That scheduling decision is still open.
 
 ### TASK-005 — Render Warsaw map shell
 
@@ -2280,42 +2303,57 @@ None for TASK-001.
 
 Not verifiable in this environment, and therefore not claimed:
 
-- Superseded 2026-09-14 (see "Owner-directed additions" above): a real,
-  GitHub-linked Vercel deployment now exists and rebuilds on every push
-  (`gdziekibel.vercel.app`). What remains genuinely unverified: whether
-  the live deployment has a real `DATABASE_URL` configured at all — this
-  session has no tool to read or list Vercel environment variables (only
-  a Render equivalent exists in this session's toolset), so it is not
-  known whether `/api/toilets/nearby` and the other DB-backed routes work
-  on the real deployment or fail server-side. Direct network access to
-  Vercel hosts from this sandbox is still blocked by the environment's own
-  egress policy, unrelated to the deployment's own health.
+- Superseded 2026-09-14: a real, GitHub-linked Vercel deployment exists
+  and rebuilds on every push (`gdziekibel.vercel.app`), with a real,
+  working `DATABASE_URL`, a fully migrated schema, and 562 real Warsaw
+  toilet rows (all confirmed directly this same day — see the
+  "Owner-directed additions" entries above and TASK-004's own record).
+- Superseded 2026-09-14: `vercel.json`'s six security headers
+  (`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
+  `Strict-Transport-Security`, `Permissions-Policy`,
+  `Cross-Origin-Opener-Policy`) are confirmed present, checked directly
+  against the real production response headers for `gdziekibel.vercel.app/pl`
+  via `mcp__Vercel__web_fetch_vercel_url` — not merely assumed from the
+  config file. This session's own Vercel access made the previous
+  "cannot verify from this environment" note obsolete; it was true only
+  for the sandbox itself, never for the deployed site a real request
+  actually reaches.
 - CI has not been observed running on GitHub; the workflow is untested there.
 - A separate cloud environment with an allowlist for the Warsaw and
   OpenStreetMap hosts was created on 2026-09-13. No session has yet reported a
   successful probe run from it; the one session that ran after its creation
   recorded the same HTTP 403 denials. Whether that session used the new
-  environment is not recorded.
-- The TASK-002 source verification could not be started from this environment.
-  On 2026-09-13 the egress proxy answered HTTP 403 to CONNECT for
+  environment is not recorded. Superseded in spirit by the 2026-09-14
+  Overpass ingestion above, which succeeded from Vercel's own build
+  environment instead — a different, real path to the same result.
+- The TASK-002 source verification (Warsaw open-data hosts specifically:
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
-  `warszawa19115.pl` and `overpass-api.de`. No Warsaw or OpenStreetMap value has
-  been observed, so none is recorded as fact.
-- A real Postgres/PostGIS host reachable from this session for TASK-028: the
-  one candidate provisioned this session (Supabase, Frankfurt — see the
-  "Owner-directed additions" note above) failed a real connectivity smoke
-  test with a DNS resolution error, the same direct-egress restriction as
-  every host above, and is now not even visible through this session's own
-  Supabase MCP access. TASK-028 (`PLAN.md` Milestone 5) remains blocked on
-  this, unchanged since it was first named.
+  `warszawa19115.pl`) still could not be started from this sandboxed
+  session as of 2026-09-13's check. Whether Vercel's build environment
+  can reach these too, the way it now reaches Overpass and Supabase, has
+  not been tested — a real, concrete next thing to try if a second data
+  source is ever pursued (TASK-022 already built the matching engine a
+  second source would need).
+- A real Postgres host reachable **from this sandboxed session
+  directly**: still no. The one candidate this session provisioned
+  (Supabase, Frankfurt) is reachable from Vercel's own build/runtime
+  (confirmed repeatedly, 2026-09-14) but not from any sandboxed session
+  here — both the connection string's direct host (`ENOTFOUND`) and its
+  pooler host (connection hangs to timeout) are blocked, two different
+  failure modes for the same underlying sandbox network restriction.
+  This still blocks a rollback rehearsal for `TASK-031`, which needs a
+  session that can run `pnpm db:migrate:down` interactively, not just
+  the fixed `up` direction Vercel's build now runs automatically.
 - Least-privilege database credentials (`ARCHITECTURE.md` section 16,
-  TASK-029's own audit): cannot be created or verified without a reachable
-  real Postgres this session can administer, which does not currently exist
-  (see above).
-- `vercel.json`'s security headers (three pre-existing, three added by
-  TASK-029) are not verifiable against a running server from this
-  environment: the `headers` block only takes effect on Vercel's own edge
-  layer, not under `next dev`/`next build`/`next start`.
+  TASK-029's own audit): still not created. Even with Vercel's own
+  build/runtime able to reach the database, nothing in this project's
+  current toolset can run arbitrary administrative SQL (`CREATE ROLE`,
+  `GRANT`) against it — only the fixed, committed migration files via
+  `pnpm db:migrate`. Creating this role needs either a session with
+  direct `psql`/admin access, or a new, explicitly-reviewed migration
+  file that itself creates and grants the narrower role (a real, if
+  slightly unusual, use of the same migration mechanism already proven
+  to reach this database).
 
 ## Next approved task
 
@@ -2330,55 +2368,46 @@ without modifying code," which needs no staging deployment, database, or
 map-tile access — the same reason TASK-029 itself was reachable when
 TASK-028 was not.
 
-Also still outstanding, unrelated to the Milestone 5 sequence:
+Updated 2026-09-14, after the real database connection, migration, and
+OSM ingestion all confirmed working against production (above) —
+TASK-028 is now much closer than previously recorded:
 
-- One live OSM ingestion run, from a session with working egress to
-  `overpass-api.de`:
-
-  ```
-  git pull && pnpm install --frozen-lockfile
-  pnpm db:migrate
-  pnpm ingest:osm
-  ```
-
-  Record the boundary relation it resolves and its counts here. That
-  closes TASK-004 and, with the same run, most of the TASK-002
-  observation gaps.
-- Visually confirm the map shell renders real tiles and a real location
-  dot. No key is needed anymore (`docs/adr/0024-openfreemap-tile-provider.md`)
-  — this is now purely an egress problem, and the real Vercel deployment
-  (`gdziekibel.vercel.app`) can be opened directly in any ordinary
-  browser, which has no such restriction, unlike this sandboxed session.
-
-Updated 2026-09-14 given the real Vercel deployment confirmed above —
-TASK-028 is closer than previously recorded, but not yet safe to attempt
-blind:
-
-1. `TASK-028 — Milestone integration verification` — the deployment
-   itself is real now, and the map no longer needs a key. What is still
-   unconfirmed: whether the live deployment has a working `DATABASE_URL`
-   (this session cannot read Vercel's environment variables — see
-   "Unresolved blockers" above) and whether `SITE_URL` is set there
-   (`resolveSiteUrl` falls back to Vercel's own `VERCEL_URL`, which is
-   deployment-specific rather than the stable production domain, so
-   metadata/OG URLs may not point at `gdziekibel.vercel.app` without it
-   set explicitly). A session with the means to check the live site's
-   actual API responses and `<head>` output — or the project owner,
-   directly in a browser — should confirm both before this task is
-   attempted for real.
+1. `TASK-028 — Milestone integration verification` — the deployment is
+   real, the map no longer needs a key, the database is real, reachable,
+   fully migrated, and holds real Warsaw toilet data (562 rows). The one
+   concrete, confirmed-remaining gap: `SITE_URL` is not set on Vercel —
+   checked directly by inspecting the live page's own served HTML, whose
+   `canonical`/`og:url` tags point at the deployment-specific
+   `gdziekibel-<hash>-bienos.vercel.app` rather than the stable
+   `gdziekibel.vercel.app` (`resolveSiteUrl`'s fallback to Vercel's own
+   `VERCEL_URL`, which is exactly this deployment-specific value, working
+   as designed in the absence of an explicit override). Setting
+   `SITE_URL=https://gdziekibel.vercel.app` in Vercel's environment
+   variables and redeploying is the one remaining concrete step before
+   attempting this task for real.
 2. `TASK-031 — Staging release verification` and `TASK-032 — Production
-   release` — both still need a real, reachable Postgres for a genuine
-   migration/rollback rehearsal. The one candidate this session
-   provisioned (Supabase, Frankfurt) is not reachable from here — see the
-   "Owner-directed additions" note above — and it is not known whether it
-   is what the live Vercel deployment's own `DATABASE_URL` points at, if
-   anything.
+   release` — both need a real migration/rollback rehearsal. The
+   database is real and reachable now, but only from Vercel's own
+   build/runtime environment, never from any sandboxed session directly
+   (confirmed repeatedly: both the connection string's direct host and
+   its pooler host are unreachable from here, by two different failure
+   modes). A rollback rehearsal (`pnpm db:migrate:down`) has not been
+   attempted against it — unlike the `up` direction, this has real
+   destructive potential and should not be attempted blind, without a
+   real recovery plan already reviewed.
 
-Before starting any of the three, read `docs/adr/0022-seo-share-baseline.md`
-and every prior task's own "no egress/no key" note (TASK-004, TASK-022,
-TASK-025, TASK-029) — the pattern is consistent enough across this whole
-session that a future session with real access should name what it can
-newly observe (real tiles, a real deployment's actual Core Web Vitals, a
-real Lighthouse run against the real `SITE_URL`, a real least-privilege
-database role) rather than repeating this session's fallback-path-only
-evidence.
+Also still outstanding: visually confirming the map shell renders real
+tiles and a real location dot. No key is needed anymore
+(`docs/adr/0024-openfreemap-tile-provider.md`), and both the database
+and the OSM ingestion are now real — this is the one piece of the
+primary journey nobody has yet reported actually seeing render
+end-to-end, real tiles and real markers together, in an ordinary
+browser at `gdziekibel.vercel.app`.
+
+Before starting any of the above, read `docs/adr/0022-seo-share-baseline.md`,
+`docs/adr/0025-build-time-migrations.md`, and every prior task's own
+"no egress/no key" note (TASK-004, TASK-022, TASK-025, TASK-029) — most
+of that pattern is now resolved for a session with real Vercel access
+(this one), but a future session should still verify current state
+directly rather than trust an earlier entry unchecked, exactly the
+lesson the Vercel-deployment correction above already recorded.

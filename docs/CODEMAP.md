@@ -453,11 +453,12 @@ Ownership:
 - `.nvmrc`, `package.json` `engines` — Node runtime expectation
 - `.env.example` — variable names only
 - `vercel.json` — framework, lockfile-enforced install, security headers,
-  and `pnpm db:reconcile-migration-history && pnpm db:migrate && pnpm
-  build` as the build command (ADR 0025) — every deploy reconciles then
-  applies pending migrations first; the reconcile step is a one-time fix
-  for a real historical mismatch, planned for removal once confirmed
-  caught up
+  and `pnpm db:migrate && pnpm build` as the build command (ADR 0025) —
+  every deploy applies pending migrations first. Two one-time steps ran
+  here temporarily and were removed again once confirmed done:
+  `db:reconcile-migration-history` (a real historical bookkeeping
+  mismatch) and `ingest:osm` (TASK-004's real first live OSM ingestion,
+  562 Warsaw toilets, 2026-09-14) — see `PROGRESS.md`.
 - `.github/workflows/ci.yml` — `quality`, `database` and `e2e` jobs
 - `.github/dependabot.yml` — weekly npm and github-actions update checks
   (TASK-029)
