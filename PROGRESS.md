@@ -2292,9 +2292,31 @@ Verified, not assumed, in this order:
 hang into a visible, recoverable fallback instead of a blank area, and
 remains the safety net for any future failure of the same shape.
 
-Not yet confirmed: the real site rendering real tiles in an ordinary
-browser after this deploy — the one remaining check, and the last piece
-of the primary journey nobody has yet reported actually seeing.
+**Confirmed working on the real deployed site, 2026-09-14.** The project
+owner opened `https://gdziekibel-bienos.vercel.app/pl` and reported the
+map rendering. This is the first time anyone has seen this project's
+primary journey work end to end against real tiles — the longest-standing
+unverified claim in this file, open since TASK-005.
+
+One further real cause of delay, worth recording as its own lesson: after
+the fix deployed, the map still appeared blank, and two more rounds of
+diagnosis went into looking for a second defect that did not exist. The
+owner's own Web Inspector screenshot resolved it — the `Network` tab's
+domain column, and the page's own `canonical` tag, both read
+`gdziekibel-3y01rbagl-bienos.vercel.app`: a **deployment-specific
+immutable URL**, pinned to commit `1e6c77d`, from before either fix.
+Vercel never updates those; every deploy gets its own permanent hash
+host. No amount of redeploying or cache-clearing could ever have changed
+what that URL served, and its Network tab showed exactly that — no
+worker, not one `.pbf` request.
+
+`SITE_URL` still being unset (recorded below) is what makes this trap
+easy to fall into: `resolveSiteUrl` falls back to Vercel's own
+`VERCEL_URL`, which is the deployment-specific host, so the deployed page
+writes that dead-snapshot URL into its own `canonical`/`og:url` — meaning
+any link copied or shared from the site pins the reader to a frozen
+build. Setting `SITE_URL` is no longer just an SEO detail; it is what
+stops the live site from handing out URLs that can never update.
 
 Modified: `components/map/MapShell.tsx`, `e2e/home.spec.ts`,
 `package.json`, `.gitignore`, `eslint.config.mjs`, `docs/CODEMAP.md`.
@@ -2431,15 +2453,12 @@ Not verifiable in this environment, and therefore not claimed:
   environment is not recorded. Superseded in spirit by the 2026-09-14
   Overpass ingestion above, which succeeded from Vercel's own build
   environment instead — a different, real path to the same result.
-- Whether the real deployed site now renders real tiles in an ordinary
-  browser, after the MapLibre worker fix
-  (`docs/adr/0026-maplibre-worker-static-asset.md`): not yet confirmed by
-  anyone looking at it. The defect itself is fully understood and
-  reproduced, the fix is verified against this project's own production
-  build in a real browser (real tile requests, plus a negative control
-  proving the new e2e test detects the defect), but this sandbox has no
-  egress to the tile host, so no session can see real Warsaw tiles
-  render. That check belongs to whoever opens the live site next.
+- Superseded 2026-09-14: the real deployed site renders real tiles, in a
+  real browser, confirmed by the project owner at
+  `https://gdziekibel-bienos.vercel.app/pl` after the MapLibre worker fix
+  (`docs/adr/0026-maplibre-worker-static-asset.md`). This sandbox still
+  has no egress to the tile host and cannot see it for itself, so this
+  rests on the owner's direct report, not on any command run here.
 - The TASK-002 source verification (Warsaw open-data hosts specifically:
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
   `warszawa19115.pl`) still could not be started from this sandboxed
@@ -2510,13 +2529,15 @@ TASK-028 is now much closer than previously recorded:
    destructive potential and should not be attempted blind, without a
    real recovery plan already reviewed.
 
-Also still outstanding: visually confirming the map shell renders real
-tiles and a real location dot. No key is needed anymore
-(`docs/adr/0024-openfreemap-tile-provider.md`), and both the database
-and the OSM ingestion are now real — this is the one piece of the
-primary journey nobody has yet reported actually seeing render
-end-to-end, real tiles and real markers together, in an ordinary
-browser at `gdziekibel.vercel.app`.
+Resolved 2026-09-14: the map shell renders real tiles in an ordinary
+browser at `gdziekibel-bienos.vercel.app`, confirmed by the project
+owner (see the worker-fix entry above). No key is needed
+(`docs/adr/0024-openfreemap-tile-provider.md`), the database and the OSM
+ingestion are real, and the tiles now render — the primary journey has
+been seen working end to end for the first time. Still not separately
+confirmed by anyone: a real location dot and real toilet markers drawn
+on those tiles, which needs a real grant from inside Warsaw rather than
+just a page load.
 
 Before starting any of the above, read `docs/adr/0022-seo-share-baseline.md`,
 `docs/adr/0025-build-time-migrations.md`, and every prior task's own
