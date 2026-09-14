@@ -1,11 +1,26 @@
 import type { PoolClient } from 'pg';
+import {
+  findCrossSourceSpatialCandidates,
+  insertDedupCandidate,
+} from '@/db/queries/dedup-candidates';
 import type { NormalizedSourceRecord } from '@/lib/toilets/normalized-source-record';
+import { decideMatch, SPATIAL_CANDIDATE_RADIUS_METERS } from './dedup';
+import { FALLBACK_TOILET_NAME } from './fallback-name';
+
+export { FALLBACK_TOILET_NAME };
 
 /**
  * Writes normalised source records into the database.
  *
- * Source-agnostic on purpose: the second source (TASK-022) reuses this without
- * change. It implements the identity and change-detection rules in
+ * Source-agnostic: a second source calls this the same way OSM does. It is
+ * NOT unmodified-reuse-proof against duplicates on its own — an earlier
+ * version of this comment claimed it was, which did not survive actually
+ * building `TASK-022`'s matching requirement. Deciding whether a brand-new
+ * source record belongs to an existing canonical toilet is
+ * `lib/ingest/dedup.ts`'s job (`docs/adr/0017-cross-source-deduplication.md`),
+ * called from the `!previous` branch below.
+ *
+ * It implements the identity and change-detection rules in
  * `docs/contracts/osm-toilets-source.md` section 5.
  *
  * What it never does: delete a source record, delete a canonical toilet, or
@@ -16,17 +31,18 @@ import type { NormalizedSourceRecord } from '@/lib/toilets/normalized-source-rec
 
 export interface UpsertCounts {
   fetched: number;
+  /** A new canonical toilet was created — no cross-source candidate existed. */
   created: number;
   updated: number;
   unchanged: number;
   notSeen: number;
+  /** Linked to an existing, differently-sourced toilet; that toilet's own
+   * columns were not touched (docs/adr/0017, "conflict surfaced, not
+   * silently resolved"). */
+  merged: number;
+  /** Inserted with `toilet_id = NULL`, pending review in `dedup_candidates`. */
+  flaggedForReview: number;
 }
-
-/**
- * The label used when a source gives no name. It states nothing about access,
- * price or hours. Revisit when copy rules for labels exist.
- */
-export const FALLBACK_TOILET_NAME = 'Toaleta';
 
 /** Canonical columns this task can derive from one source record. */
 function canonicalValues(record: NormalizedSourceRecord) {
@@ -78,6 +94,46 @@ const UPDATE_TOILET = `
   WHERE id = $21`;
 
 /**
+ * Decides how a source record `upsertSourceRecords` has never seen before
+ * relates to any existing, differently-sourced toilet nearby
+ * (`docs/adr/0017-cross-source-deduplication.md`): a brand new canonical
+ * toilet, a confident link to an existing one (never touching that
+ * toilet's own columns), or an ambiguous match left unlinked
+ * (`toilet_id = NULL`) and flagged in `dedup_candidates` for later review.
+ */
+async function resolveCanonicalToilet(
+  client: PoolClient,
+  sourceName: string,
+  record: NormalizedSourceRecord,
+  counts: UpsertCounts,
+): Promise<{
+  toiletId: string | null;
+  ambiguousCandidates: { toiletId: string; score: number }[];
+}> {
+  const candidates = await findCrossSourceSpatialCandidates(client, {
+    position: record.position,
+    radiusMeters: SPATIAL_CANDIDATE_RADIUS_METERS,
+    excludeSourceName: sourceName,
+  });
+
+  const decision = decideMatch(record.name, candidates);
+
+  if (decision.kind === 'new') {
+    const toilet = await client.query<{ id: string }>(INSERT_TOILET, canonicalValues(record));
+    counts.created += 1;
+    return { toiletId: toilet.rows[0]?.id ?? null, ambiguousCandidates: [] };
+  }
+
+  if (decision.kind === 'merge') {
+    counts.merged += 1;
+    return { toiletId: decision.toiletId, ambiguousCandidates: [] };
+  }
+
+  counts.flaggedForReview += 1;
+  return { toiletId: null, ambiguousCandidates: decision.candidates };
+}
+
+/**
  * Applies one run's records inside the caller's transaction.
  *
  * `runStartedAt` marks records this run did not see, so a partially failed
@@ -96,6 +152,8 @@ export async function upsertSourceRecords(
     updated: 0,
     unchanged: 0,
     notSeen: 0,
+    merged: 0,
+    flaggedForReview: 0,
   };
 
   for (const record of records) {
@@ -111,8 +169,14 @@ export async function upsertSourceRecords(
     const previous = existing.rows[0];
 
     if (!previous) {
-      const toilet = await client.query<{ id: string }>(INSERT_TOILET, canonicalValues(record));
-      await client.query(
+      const { toiletId, ambiguousCandidates } = await resolveCanonicalToilet(
+        client,
+        sourceName,
+        record,
+        counts,
+      );
+
+      const inserted = await client.query<{ id: string }>(
         `INSERT INTO toilet_source_records (
            source_name, source_record_id, source_version, toilet_id, source_url,
            geom, raw_payload, normalized_payload, source_updated_at,
@@ -121,12 +185,13 @@ export async function upsertSourceRecords(
            $1, $2, $3, $4, $5,
            ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography, NULL, $8::jsonb, $9,
            $10, $10
-         )`,
+         )
+         RETURNING id`,
         [
           sourceName,
           record.sourceRecordId,
           record.sourceVersion,
-          toilet.rows[0]?.id,
+          toiletId,
           record.sourceUrl,
           record.position.lon,
           record.position.lat,
@@ -135,7 +200,18 @@ export async function upsertSourceRecords(
           runStartedAt,
         ],
       );
-      counts.created += 1;
+
+      const sourceRecordId = inserted.rows[0]?.id;
+      if (sourceRecordId) {
+        for (const candidate of ambiguousCandidates) {
+          await insertDedupCandidate(client, {
+            sourceRecordId,
+            candidateToiletId: candidate.toiletId,
+            matchScore: candidate.score,
+          });
+        }
+      }
+
       continue;
     }
 

@@ -1198,6 +1198,94 @@ Not created, by design: any external rate-limiting store or provider
 first-pass gap), CAPTCHA or proof-of-work, and any change to `TASK-020`'s
 report schema or its contract for a client under the limit.
 
+### TASK-022 — Second data source + deduplication
+
+Complete on 2026-09-14. Specified in
+`tasks/022-second-source-deduplication.md`; decision recorded in
+`docs/adr/0017-cross-source-deduplication.md`.
+
+**A fresh egress check, not a stale assumption.** Before starting, a new
+session was created in the dedicated "GDZIE KIBEL" cloud environment
+(created 2026-09-13 specifically with a Warsaw/OSM host allowlist) to
+re-verify reachability rather than trust an earlier session's result.
+Confirmed the same day: `dane.um.warszawa.pl`, `api.um.warszawa.pl`,
+`overpass-api.de`, and `iot.warszawa.pl` all still fail — the proxy resets
+the connection mid-TLS (code 1006). `warszawa19115.pl` (the city's
+contact/report portal, not a data catalog) responds, but no
+public-toilets dataset was found there. No real second source is
+reachable from this project's sessions.
+
+**Built the matching engine, not a fabricated adapter.** `lib/ingest/upsert.ts`'s
+own comment used to claim "the second source (TASK-022) reuses this
+without change." That did not survive actually working through the
+requirement: the `!previous` branch always created a new canonical toilet
+for any unseen source record, with no concept of "this might already
+exist under a different source" — reusing it unmodified would create a
+full duplicate for every toilet two sources happen to agree on, the exact
+outcome `PLAN.md` asks to avoid. Rather than write a second ingestion
+adapter against a guessed schema for a source this session has never
+seen, this task built the reusable matching/merge logic and proved it
+against `NormalizedSourceRecord` fixtures under a second, explicitly
+fictional `sourceName` (`'fixture-second-source'`).
+
+**Same-source records never trigger matching — provably.** A candidate
+toilet only enters matching if it already has a source record from a
+*different* `source_name`. `db/queries/dedup-candidates.ts`'s spatial
+query enforces this at the SQL level (`WHERE s.source_name != $current`).
+Because every canonical toilet in a real production database today is
+OSM-only, this means today's real single-source ingestion is completely
+unaffected — proven by the complete pre-existing `tests/integration/ingest.test.ts`
+suite (10 tests, including two same-source records at the identical
+coordinates) passing unmodified.
+
+**Three outcomes, a first-pass threshold each.** New (no candidates
+within `SPATIAL_CANDIDATE_RADIUS_METERS`, 30 m): create a canonical
+toilet as before. Merge (within `AUTO_MERGE_DISTANCE_METERS`, 15 m, and
+name similarity ≥ `AUTO_MERGE_NAME_SIMILARITY_THRESHOLD`, 80, on a
+from-scratch Levenshtein-based scale — no dependency for one well-understood
+algorithm): link the new source record to the existing toilet without
+touching that toilet's own columns (`docs/contracts/osm-toilets-source.md`
+section 5: "when two sources disagree on a field, both source records are
+kept and the conflict is surfaced, not silently resolved"). Ambiguous
+(within the spatial radius but short of the merge bar): the new source
+record is inserted with `toilet_id = NULL` — nullable since `TASK-003`'s
+original schema, exactly for this — and one `dedup_candidates` row per
+candidate records the pairing, `status = 'pending'`. Name similarity is
+never computed against `FALLBACK_TOILET_NAME` ("Toaleta") on either side:
+two anonymous facilities sharing the same placeholder label match on
+nothing real.
+
+Created: a migration adding `dedup_candidates` and
+`dedup_candidate_status`. `lib/ingest/dedup.ts` (`computeNameSimilarity`,
+`decideMatch`, the three named threshold constants; pure, no database).
+`lib/ingest/fallback-name.ts` (`FALLBACK_TOILET_NAME` moved out of
+`upsert.ts` so `dedup.ts` can import it without a circular dependency;
+re-exported from `upsert.ts` so the existing import path is unchanged).
+`db/queries/dedup-candidates.ts` (`findCrossSourceSpatialCandidates`,
+`insertDedupCandidate`). `lib/ingest/upsert.ts`'s `!previous` branch now
+calls the matching logic before deciding whether to create, merge, or
+flag; `UpsertCounts` gains `merged` and `flaggedForReview`; the file's own
+top comment is corrected.
+
+Verified: lint, format, typecheck, 249 unit tests (13 new — `computeNameSimilarity`'s
+placeholder/missing-name handling and real similarity scoring,
+`decideMatch`'s new/merge/ambiguous branches including a test that
+computes its own expected similarity score rather than asserting a
+hardcoded number), 43 integration tests (4 new: a confident merge that
+leaves the original toilet's conflicting `wheelchair` value untouched, an
+ambiguous match left unlinked with a real `dedup_candidates` row, a
+far-away record creating a new toilet, and — the load-bearing guarantee —
+two same-source records 2 metres apart each getting their own canonical
+toilet), the production build, and all 18 pre-existing Playwright tests
+passing unmodified (no new UI or API surface — this task is ingestion
+plumbing only).
+
+Not created, by design: a real second ingestion adapter (nothing real to
+adapt to), any moderation UI or code reading/changing
+`dedup_candidates.status`, address-based matching (no adapter populates
+`address` yet), and any change to ranking, confidence computation, or
+existing single-source ingestion behaviour.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1233,11 +1321,11 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 236 tests in 31 files                          |
+| `pnpm test:unit`          | pass, 249 tests in 32 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
-| `pnpm test:integration`   | pass, 39 tests in 6 files                            |
+| `pnpm test:integration`   | pass, 43 tests in 7 files                            |
 | `pnpm test:e2e`           | pass, 18 tests in the `mobile-chromium` project (map fallback, location ask/deny/grant, nearby-fetch interception, nearest-toilet preview, toilet detail sheet + navigation CTA + price amount + payment rows, real opening-status colour, list view, filter sheet, the three no-results states, a real out-of-Warsaw location grant, and the report flow's success and failure/retry states) |
 
 Also observed:
@@ -1330,33 +1418,28 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-022 — Second data source + deduplication` per `PLAN.md`
-   (Milestone 4 — Product quality begins here): "a second validated source
-   can be ingested without creating obvious duplicate toilets; ambiguous
-   matches are surfaced for review." Needs a `tasks/022-*.md` file. This
-   is the task `docs/adr/0003-first-data-source.md` section 4 deferred
-   from the start ("the Warsaw city open-data toilet dataset... a
-   deferral, not an evaluation") and the one every prior ADR's "not yet
-   corroborated" language has been waiting for (`docs/adr/0009`,
-   `docs/adr/0014`'s own "HIGH stays unreachable until `TASK-022`").
-   `ARCHITECTURE.md` section 14 sketches the matching approach (nearby
-   spatial candidate match, compare normalised name/address/identifiers,
-   auto-merge only above a conservative threshold, flag ambiguous
-   candidates for review, preserve every original source record) but is
-   explicit that "a future ADR should record final matching rules after
-   source research" and that exact thresholds must not be hard-coded
-   before inspecting real datasets. This session's own environment has
-   never had egress to Warsaw or OpenStreetMap hosts (recorded under
-   "Unresolved blockers" below) — a session with real access is needed to
-   evaluate an actual second source (the Warsaw city open-data toilet
-   dataset PRODUCT.md/ADR 0003 name as the obvious candidate) before any
-   matching threshold can be more than a guess. If no such session is
-   available, the matching *logic* (candidate matching, threshold
-   application, review-flagging) can still be built and tested against
-   two synthetic/fixture sources feeding the existing `toilet_source_records`
-   table, the same "implement the real logic, prove it with fixtures,
-   document the live-data gap honestly" pattern already used throughout
-   this project (openinghours/charge parsing, TASK-019's confidence
-   computation) — but a real second source should not be invented to
-   force progress; the ADR should say plainly which path was taken and
-   why.
+2. `TASK-023 — Analytics instrumentation` per `PLAN.md` (Milestone 4 —
+   Product quality): "core funnel events are captured without precise
+   location." Needs a `tasks/023-*.md` file. `PRODUCT.md` section 13's
+   FR-09 names the funnel exactly: app opened, location granted/denied,
+   nearby results loaded, toilet selected, navigation clicked, filter
+   applied, report submitted, no-results state — every one of these
+   already has a concrete trigger point in the existing code
+   (`MapShell.tsx`'s `locationFlow` transitions, the nearby-fetch effect,
+   `selectedId`, the navigation `<a>`, `activeFilters`, `ReportSheet`'s
+   submit, `noResultsVisible`). Section 14's privacy requirements are the
+   real constraint to design against first: "Do not include precise
+   coordinates in analytics events," "Avoid third-party trackers not
+   needed for the product," "Document all external services that receive
+   IP/location-derived information." `ARCHITECTURE.md` section 20 lists
+   "analytics key (if enabled)" as an optional environment variable and
+   section 21 rules out adopting infrastructure without evidence — so
+   before writing any event-sending code, this task's first real decision
+   is the same shape as `TASK-021`'s rate-limiter question: which
+   analytics destination (a real provider needing an account/key this
+   session cannot create, or a minimal first-party event log reusing
+   Postgres, matching this project's demonstrated preference for not
+   introducing external services without evidence) and whether that
+   decision can even be made without the project owner naming a real
+   provider. `PROGRESS.md`'s own "Known unresolved decisions" already
+   lists "Final analytics provider" as unresolved.

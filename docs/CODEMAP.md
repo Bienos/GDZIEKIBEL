@@ -200,12 +200,30 @@ lib/
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
                       normalised payment_methods since TASK-014, and
-                      access_raw since TASK-019 (ADR 0014)
+                      access_raw since TASK-019 (ADR 0014); the `!previous`
+                      branch now calls lib/ingest/dedup.ts before creating a
+                      canonical toilet (TASK-022, ADR 0017) — the earlier
+                      claim that a second source "reuses this without
+                      change" did not survive building that requirement
+  ingest/dedup.ts     cross-source matching (TASK-022, ADR 0017): pure —
+                      computeNameSimilarity (a from-scratch Levenshtein, no
+                      dependency; null on a missing or placeholder name,
+                      never a false 100) and decideMatch (new/merge/
+                      ambiguous from spatial + name-similarity thresholds,
+                      all first-pass and named as such)
+  ingest/fallback-name.ts
+                      FALLBACK_TOILET_NAME ("Toaleta"), split out of
+                      upsert.ts so dedup.ts can import it without a
+                      circular dependency; re-exported from upsert.ts for
+                      the existing import path
   ingest/osm/         the OpenStreetMap adapter: fetch, validate, normalize
                       (normalize.ts derives opening-hours fields since
                       TASK-013, and charge/payment-method fields since TASK-014;
                       accessRaw was already produced since TASK-002/003, only
-                      stored on the canonical row since TASK-019)
+                      stored on the canonical row since TASK-019); still the
+                      only real adapter — TASK-022 built the matching engine
+                      a second one would need, not a second adapter itself,
+                      since no real second source is reachable (see PROGRESS.md)
 db/
   queries/nearby.ts   the nearby-toilets PostGIS query (TASK-007); active-only,
                       distance order, server-capped result count; selects
@@ -220,6 +238,12 @@ db/
                       checkAndIncrementRateLimit (TASK-021, ADR 0016): one
                       atomic INSERT ... ON CONFLICT ... RETURNING, prunes
                       windows older than the retention cutoff first
+  queries/dedup-candidates.ts
+                      findCrossSourceSpatialCandidates and
+                      insertDedupCandidate (TASK-022, ADR 0017); the spatial
+                      query itself excludes same-source toilets, the one
+                      guarantee that keeps today's single-source ingestion
+                      provably unaffected
 db/
   client.ts           shared pg connection pool
   postgis.ts          PostGIS availability/version read
@@ -233,6 +257,9 @@ db/
                       toilet_report_status (TASK-020, ADR 0015)
     *_add-report-rate-limit.sql
                       adds report_rate_limit_windows (TASK-021, ADR 0016)
+    *_add-dedup-candidates.sql
+                      adds dedup_candidates, dedup_candidate_status
+                      (TASK-022, ADR 0017)
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -326,6 +353,15 @@ Ownership:
   external provider, resolving `ARCHITECTURE.md` section 23's open
   question; a SHA-256 hash of the client IP, never the raw address; a
   fixed one-hour window, five writes, pruned on every request.
+- `docs/adr/0017-cross-source-deduplication.md` — cross-source matching
+  only ever considers a toilet already backed by a *different* source,
+  proving today's single-source ingestion unaffected; spatial (30 m) +
+  name-similarity (80, from-scratch Levenshtein) thresholds, both a first
+  pass; an ambiguous match stays unlinked (`toilet_id = NULL`) and flagged,
+  never becomes a new toilet; a merge never overwrites the existing
+  toilet's own columns. No real second source is reachable — a fresh
+  egress check from the Warsaw/OSM-allowlisted environment on 2026-09-14
+  confirmed it, so the matching engine is proven against fixtures only.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -401,11 +437,23 @@ real Postgres-backed counter, keyed to a SHA-256 hash of the client's IP
 from the same client within the hour with `429` and a `Retry-After`
 header — verified the same way, a real curl sequence against a running
 production build crossing the limit and a different IP staying
-unaffected. No moderation UI reads `toilet_reports.status` yet. No
-deduplication, analytics or error-tracking code exists. Ingestion exists
-but has never run against the
-live source — so the opening-hours and charge parsers, and the confidence
-computation, have never seen a real OSM string, only constructed fixtures
-matching their documented grammars — and the map — tiles, the location
-dot, and the toilet markers — has never been visually observed rendering
-for real from this session. Those areas are owned by later tasks.
+unaffected. No moderation UI reads `toilet_reports.status` yet. A second
+source can now be ingested without creating obvious duplicate toilets
+(TASK-022, ADR 0017): `lib/ingest/upsert.ts`'s `!previous` branch runs
+real spatial-plus-name matching against any existing toilet already
+backed by a *different* source before deciding to create, merge, or flag
+for review — proven against a real database with synthetic fixtures under
+a second, explicitly fictional source name, since no real second source
+is reachable (a fresh egress check from the Warsaw/OSM-allowlisted cloud
+environment on 2026-09-14 confirmed `dane.um.warszawa.pl`,
+`api.um.warszawa.pl`, `overpass-api.de` and `iot.warszawa.pl` all still
+fail). Today's real, single-source OSM ingestion is provably unaffected:
+same-source candidates are never even queried, verified by the complete
+pre-existing ingestion test suite passing unmodified. No moderation UI
+reads `dedup_candidates.status` yet. No analytics or error-tracking code
+exists. Ingestion exists but has never run against the live source — so
+the opening-hours and charge parsers, and the confidence computation,
+have never seen a real OSM string, only constructed fixtures matching
+their documented grammars — and the map — tiles, the location dot, and
+the toilet markers — has never been visually observed rendering for real
+from this session. Those areas are owned by later tasks.
