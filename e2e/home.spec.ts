@@ -3,10 +3,12 @@ import { expect, test } from '@playwright/test';
 /**
  * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023/025/026 smoke
  * tests: the home page loads with the GdzieKibel.pl identity, the map
- * shell's tile fallback state (since no environment available to this
- * suite holds a real MapTiler key — see
- * docs/adr/0005-map-tile-provider.md), that the fallback path never
- * fetches maplibre-gl's script or stylesheet (TASK-025,
+ * shell's tile fallback state (this suite's sandboxed environment has no
+ * egress to OpenFreeMap's real tile host — see
+ * docs/adr/0024-openfreemap-tile-provider.md, which replaced the earlier
+ * key-gated MapTiler setup in docs/adr/0005-map-tile-provider.md), that
+ * maplibre-gl's own stylesheet still never ships inside the page's global
+ * CSS bundle even though it is now always attempted (TASK-025,
  * docs/adr/0020-lazy-load-map-library-styles.md), the
  * location permission flow, the nearby-toilets fetch, the nearest-toilet
  * preview, the toilet detail sheet it opens into, that sheet's navigation
@@ -26,8 +28,8 @@ import { expect, test } from '@playwright/test';
  * navigation CTA's `href` is asserted directly rather than followed: this
  * environment has no egress to google.com (see
  * docs/adr/0008-external-navigation-url.md). A live-tile smoke test,
- * including marker clicks, belongs wherever a key is
- * configured.
+ * including marker clicks, belongs wherever this suite's own egress
+ * restriction does not apply.
  */
 test('the bare domain serves the Polish shell with the map fallback state', async ({ page }) => {
   await page.goto('/');
@@ -37,19 +39,27 @@ test('the bare domain serves the Polish shell with the map fallback state', asyn
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('GdzieKibel.pl');
   await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
 
-  // No key is configured in this suite's environment, so the map shell must
-  // show the literal fallback rather than a blank or broken area.
+  // OpenFreeMap needs no key, so the map shell always attempts a real load;
+  // this suite's own sandboxed environment cannot reach the real tile host,
+  // so that attempt fails and the map shell must show the literal fallback
+  // rather than a blank or broken area — the same behaviour a real
+  // deployment needs for any genuine network/provider failure.
   await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
   await expect(page.getByText('Nie udało się załadować mapy.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'SPRÓBUJ JESZCZE RAZ' })).toBeVisible();
 });
 
-test('the fallback path never fetches maplibre-gl or its stylesheet (TASK-025)', async ({
+test('maplibre-gl and its stylesheet are attempted, and still never ship inside the page itself (TASK-025, docs/adr/0024)', async ({
   page,
 }) => {
   // Chunk filenames are content-hashed, so a URL substring check would
-  // prove nothing; the real invariant is that no loaded stylesheet
-  // contains maplibre-gl's own `.maplibregl-*` class prefix.
+  // prove nothing; the real invariant is that maplibre-gl's own
+  // `.maplibregl-*` class prefix only ever shows up in a stylesheet
+  // fetched after the initial page load, never in one the server-rendered
+  // HTML itself links (globals.css's own compiled output). The navigation
+  // response's own raw body is the one place that distinguishes the two:
+  // by the time `goto()` resolves, any client-injected `<link>` tag from
+  // the map shell's effect is already in the live DOM too.
   const cssContainingMaplibre: string[] = [];
   page.on('response', async (response) => {
     const url = response.url();
@@ -58,10 +68,25 @@ test('the fallback path never fetches maplibre-gl or its stylesheet (TASK-025)',
     if (body.includes('.maplibregl-')) cssContainingMaplibre.push(url);
   });
 
-  await page.goto('/pl');
+  const documentResponse = await page.goto('/pl');
+  const initialHtml = (await documentResponse?.text()) ?? '';
+  const initialStylesheetHrefs = [
+    ...initialHtml.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["']/g),
+  ]
+    .map((match) => match[1])
+    .filter((href): href is string => href !== undefined);
+
+  // The map shell's own effect runs on mount; the fallback appearing proves
+  // the real load was attempted and failed (this suite's sandboxed
+  // environment has no egress to the real tile host), by which point any
+  // dynamically-imported CSS has already been requested.
   await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
 
-  expect(cssContainingMaplibre).toEqual([]);
+  expect(cssContainingMaplibre.length).toBeGreaterThan(0);
+  for (const url of cssContainingMaplibre) {
+    const path = new URL(url).pathname;
+    expect(initialStylesheetHrefs.some((href) => href.includes(path))).toBe(false);
+  }
 });
 
 test('the switch changes every string and the lang attribute, map fallback included', async ({

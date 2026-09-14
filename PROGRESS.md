@@ -1996,6 +1996,99 @@ to a route's success-path response shape, a Content-Security-Policy
 attempt at TASK-030's independent review or TASK-031's staging
 verification — this task's own scope was the code/config audit only.
 
+### Owner-directed additions outside the task sequence (continued)
+
+**Real Vercel deployment confirmed, and the earlier "no team access"
+finding corrected, 2026-09-14.** The project owner reconnected the
+Vercel connector and shared a dashboard screenshot showing a genuine,
+GitHub-linked deployment: project `gdziekibel`, production domain
+`gdziekibel.vercel.app`, `Ready` status, built from this branch's own
+`89d2331` (TASK-029). This is a fundamentally different, better state
+than the "unofficial, manually-uploaded stopgap" recorded above for
+`gdziekibel-bienos.vercel.app` from 2026-09-13 — that deployment did not
+rebuild on push; this one does. This session's own `list_teams` call
+still returned an empty list after the reconnect, which was initially
+(incorrectly) read as continued blocked access. The real explanation,
+confirmed directly: **`bienos` is a personal "Hobby"-tier Vercel account,
+not a Team** — Vercel's API does not enumerate personal accounts through
+the teams endpoint at all, so an empty `list_teams` result is expected
+and correct for this account shape, not a sign of missing access. Calling
+`mcp__Vercel__get_project` with the account's own slug (`bienos`) as the
+`teamId` parameter succeeded immediately, returning the real project:
+`accountId team_Qlgabc646xuDRKqUYR8d5ykj`, three live domains
+(`gdziekibel.vercel.app`, `gdziekibel-bienos.vercel.app`, and a
+branch-specific preview domain for `claude/serene-mccarthy-vmveen`),
+Node.js runtime `24.x` reported by the API while the dashboard's own UI
+showed an "22.x (override)" badge — consistent with, not contradicting,
+this repository's own `.nvmrc`/`package.json` `engines` pin of Node 22,
+which Vercel's build correctly honours over its own newer platform
+default. No environment-variable-management tool exists in this
+session's Vercel MCP toolset (confirmed by search), so `SITE_URL` still
+cannot be set from here directly — that remains a manual step in the
+Vercel dashboard, or a future session's tool gap to close.
+
+**Tile provider switched to OpenFreeMap, 2026-09-14.** Recorded in full
+in `docs/adr/0024-openfreemap-tile-provider.md`, which supersedes
+`docs/adr/0005-map-tile-provider.md` (MapTiler). The project owner asked
+directly whether MapLibre GL JS (already 6.9.0 in this project) could
+pair with OpenFreeMap; researched and confirmed yes — MapLibre only
+needs a style URL, and OpenFreeMap ships ready ones needing no key.
+`lib/map/tile-provider.ts` now exports a fixed `MAP_STYLE_URL` constant
+(OpenFreeMap's `positron` style, the closest of its three standard
+styles to `DESIGN.md` section 8's "muted dark or desaturated" basemap
+requirement) rather than a function of a `NEXT_PUBLIC_MAPTILER_KEY`.
+`NEXT_PUBLIC_MAPTILER_KEY` no longer exists anywhere in this codebase.
+
+**A real, deliberate behaviour change, not a drop-in swap.** ADR 0005's
+fallback design, and TASK-025's whole lazy-load optimisation
+(`docs/adr/0020-lazy-load-map-library-styles.md`), were built around one
+signal: "no key configured" meant `maplibre-gl` and its stylesheet were
+never even imported. A keyless provider has no equivalent a-priori
+signal — `components/map/MapShell.tsx`'s map-loading effect now runs on
+every mount, in every environment, attempting a real network request.
+Confirmed directly: `curl` to `tiles.openfreemap.org` from this sandbox
+returns the identical proxy `403` already recorded for MapTiler and the
+Warsaw/OSM hosts, so this session still cannot visually verify real
+tiles — but the fallback path is now reached by a genuine failed load
+rather than a "key absent" stub, which is a more honest test of the real
+failure path than the old one. `e2e/home.spec.ts`'s TASK-025 regression
+test was rewritten (not deleted): it now asserts maplibre-gl's stylesheet
+*is* fetched (proving the real attempt happens) while confirming it never
+appears among the stylesheets the server-rendered initial HTML itself
+links (proving TASK-025's other, still-true win — CSS never bundled into
+`globals.css`/the main chunk — survives unchanged). This distinction
+needed the navigation response's own raw body, not the live DOM: by the
+time `page.goto()` resolves, a client-injected `<link>` tag from the
+map's own effect is already present in the DOM too.
+
+Modified: `lib/map/tile-provider.ts`, `components/map/MapShell.tsx`,
+`.env.example`, `lib/site-url.ts` (a stale comment referencing the
+now-deleted `NEXT_PUBLIC_MAPTILER_KEY` as an illustrative example),
+`tests/unit/tile-provider.test.ts` (rewritten for the new fixed-URL
+shape), `e2e/home.spec.ts` (both the fallback-state test's reasoning
+comment and the TASK-025 regression test rewritten). `docs/adr/0005-map-tile-provider.md`
+marked superseded. Created: `docs/adr/0024-openfreemap-tile-provider.md`.
+
+Verified: lint, format, typecheck, 291 unit tests in 41 files (2
+replacing the previous 5 `tile-provider` tests — fewer because there is
+no longer a key/null/whitespace/encoding matrix to cover, only a fixed
+URL to assert), the production build, 49 integration tests unchanged (no
+query/schema code touched), and all 20 Playwright tests passing,
+including the rewritten TASK-025 test — proven meaningful the same way
+TASK-025/026 proved theirs: it actually failed first (the initial
+attempt asserted the opposite, wrong invariant — that no stylesheet
+would carry `.maplibregl-` at all — and failed with a real count of 1
+matching response before the fix), then passed after correcting the
+assertion to the real, intended invariant. Real-database rows the e2e
+run left behind in `analytics_events`/`analytics_rate_limit_windows`
+were deleted afterward, the same recurring local-webServer-reuse
+pollution recorded below.
+
+Not verified: real tiles actually rendering, for the same reason
+recorded throughout this session — this sandboxed environment has no
+egress to any tile host, OpenFreeMap included. That verification now
+depends on the real Vercel deployment confirmed above, not a missing key.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -2096,11 +2189,16 @@ None for TASK-001.
 
 Not verifiable in this environment, and therefore not claimed:
 
-- No Vercel preview deployment was created; the deployment path is documented
-  but unexercised. The Vercel integration available to this session reports no
-  team, and linking a git project is refused without a team ID, so the
-  deployment could not be created or inspected from here. Direct network access
-  to Vercel hosts is also blocked by the environment's egress policy.
+- Superseded 2026-09-14 (see "Owner-directed additions" above): a real,
+  GitHub-linked Vercel deployment now exists and rebuilds on every push
+  (`gdziekibel.vercel.app`). What remains genuinely unverified: whether
+  the live deployment has a real `DATABASE_URL` configured at all — this
+  session has no tool to read or list Vercel environment variables (only
+  a Render equivalent exists in this session's toolset), so it is not
+  known whether `/api/toilets/nearby` and the other DB-backed routes work
+  on the real deployment or fail server-side. Direct network access to
+  Vercel hosts from this sandbox is still blocked by the environment's own
+  egress policy, unrelated to the deployment's own health.
 - CI has not been observed running on GitHub; the workflow is untested there.
 - A separate cloud environment with an allowlist for the Warsaw and
   OpenStreetMap hosts was created on 2026-09-13. No session has yet reported a
@@ -2156,25 +2254,34 @@ Also still outstanding, unrelated to the Milestone 5 sequence:
   closes TASK-004 and, with the same run, most of the TASK-002
   observation gaps.
 - Visually confirm the map shell renders real tiles and a real location
-  dot, from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working
-  egress to `api.maptiler.com`.
+  dot. No key is needed anymore (`docs/adr/0024-openfreemap-tile-provider.md`)
+  — this is now purely an egress problem, and the real Vercel deployment
+  (`gdziekibel.vercel.app`) can be opened directly in any ordinary
+  browser, which has no such restriction, unlike this sandboxed session.
 
-Blocked, in order, behind real access this session does not have — do not
-attempt from an environment shaped like this one, per `AGENTS.md`'s
-verification rule against fabricating a result rather than observing one:
+Updated 2026-09-14 given the real Vercel deployment confirmed above —
+TASK-028 is closer than previously recorded, but not yet safe to attempt
+blind:
 
-1. `TASK-028 — Milestone integration verification` — needs a real
-   deployed staging stack (the one existing deployment,
-   `gdziekibel-bienos.vercel.app`, is recorded above as an unofficial,
-   manually-uploaded stopgap that does not rebuild on push, not a staging
-   stack) and real map-tile access. `SITE_URL` (TASK-027) and a real
-   `NEXT_PUBLIC_MAPTILER_KEY` are the two concrete missing pieces.
+1. `TASK-028 — Milestone integration verification` — the deployment
+   itself is real now, and the map no longer needs a key. What is still
+   unconfirmed: whether the live deployment has a working `DATABASE_URL`
+   (this session cannot read Vercel's environment variables — see
+   "Unresolved blockers" above) and whether `SITE_URL` is set there
+   (`resolveSiteUrl` falls back to Vercel's own `VERCEL_URL`, which is
+   deployment-specific rather than the stable production domain, so
+   metadata/OG URLs may not point at `gdziekibel.vercel.app` without it
+   set explicitly). A session with the means to check the live site's
+   actual API responses and `<head>` output — or the project owner,
+   directly in a browser — should confirm both before this task is
+   attempted for real.
 2. `TASK-031 — Staging release verification` and `TASK-032 — Production
-   release` — both need the same real deployed environment TASK-028
-   does, plus (`TASK-031`) a real migration/rollback rehearsal against a
-   real, reachable Postgres. The one candidate this session provisioned
-   (Supabase, Frankfurt) is not reachable from here either — see the
-   "Owner-directed additions" note above.
+   release` — both still need a real, reachable Postgres for a genuine
+   migration/rollback rehearsal. The one candidate this session
+   provisioned (Supabase, Frankfurt) is not reachable from here — see the
+   "Owner-directed additions" note above — and it is not known whether it
+   is what the live Vercel deployment's own `DATABASE_URL` points at, if
+   anything.
 
 Before starting any of the three, read `docs/adr/0022-seo-share-baseline.md`
 and every prior task's own "no egress/no key" note (TASK-004, TASK-022,

@@ -5,7 +5,7 @@ import { reportEvent } from '@/lib/analytics/report-event';
 import type { Dictionary } from '@/lib/i18n/dictionaries';
 import { isWithinWarsawBbox } from '@/lib/geo/warsaw';
 import { requestLocation, type LocationResult } from '@/lib/geolocation/request-location';
-import { buildMapStyleUrl } from '@/lib/map/tile-provider';
+import { MAP_STYLE_URL } from '@/lib/map/tile-provider';
 import {
   WARSAW_CENTER,
   WARSAW_CENTER_LAT,
@@ -45,13 +45,17 @@ import styles from './MapShell.module.css';
  * from `ToiletDetailSheet.tsx` itself, and the remaining four events are
  * logged server-side, where the request already reveals them.
  *
- * When no tile provider key is configured, `maplibre-gl`'s JS and CSS
- * (TASK-025, `docs/adr/0020-lazy-load-map-library-styles.md`) are never
- * imported or initialised. The component renders the literal fallback
- * state instead, per `docs/adr/0005-map-tile-provider.md`. This is not a
- * stub: every environment without a configured key, including a
- * misconfigured production one, needs exactly this behaviour rather than
- * a blank area.
+ * `maplibre-gl`'s JS and CSS (TASK-025,
+ * `docs/adr/0020-lazy-load-map-library-styles.md`) are still only
+ * imported once this component actually mounts a map container, never
+ * bundled into the main chunk or `globals.css`. If the real load ever
+ * fails — the provider is unreachable, a request is blocked, or a style
+ * fails to parse — before the map's first successful load, the component
+ * renders the literal fallback state instead
+ * (`docs/adr/0024-openfreemap-tile-provider.md`). This is not a stub:
+ * every environment where the real tile host cannot be reached, including
+ * this project's own sandboxed development session, needs exactly this
+ * behaviour rather than a blank or broken area.
  */
 
 /**
@@ -122,16 +126,12 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
   const deniedHeadingRef = useRef<HTMLHeadingElement>(null);
   const outsideHeadingRef = useRef<HTMLHeadingElement>(null);
 
-  // NEXT_PUBLIC_ variables must be referenced literally for Next.js to inline
-  // them at build time; wrapping this read in a helper would leave it empty.
-  const styleUrl = buildMapStyleUrl(process.env.NEXT_PUBLIC_MAPTILER_KEY);
-
   useEffect(() => {
     void reportEvent('app_opened');
   }, []);
 
   useEffect(() => {
-    if (!styleUrl || !containerRef.current) return;
+    if (!containerRef.current) return;
 
     // toiletMarkersRef.current is never reassigned; it always points to the
     // same Map for the component's lifetime. Captured here anyway, at
@@ -143,19 +143,25 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     let map: import('maplibre-gl').Map | undefined;
 
     // Imported dynamically so the ~200 KB library, and its ~11 KB (gzipped)
-    // stylesheet, are never fetched on the fallback path (TASK-025,
-    // `docs/adr/0020-lazy-load-map-library-styles.md`) — a real Lighthouse
-    // run found the CSS still loading unconditionally from `globals.css`,
-    // 98% unused, on every page view that never mounts a map.
+    // stylesheet, are never bundled into the main chunk or `globals.css`
+    // (TASK-025, `docs/adr/0020-lazy-load-map-library-styles.md`) — a real
+    // Lighthouse run found the CSS previously loading unconditionally from
+    // `globals.css`, 98% unused, on every page view. Unlike TASK-025's own
+    // MapTiler-era design, this import now runs on every mount rather than
+    // only when a key was configured: OpenFreeMap needs no key, so there is
+    // no longer an a-priori signal that loading would be pointless
+    // (`docs/adr/0024-openfreemap-tile-provider.md`).
     Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])
       .then(([{ Map: MapLibreMap, NavigationControl }]) => {
         if (cancelled || !containerRef.current) return;
 
-        // attributionControl defaults on; MapTiler's terms require it, so it
-        // is left at that default rather than disabled.
+        // attributionControl defaults on; OpenStreetMap's own data licence
+        // requires visible attribution wherever the map is displayed,
+        // regardless of tile host, so it is left at that default rather
+        // than disabled.
         map = new MapLibreMap({
           container: containerRef.current,
-          style: styleUrl,
+          style: MAP_STYLE_URL,
           center: WARSAW_CENTER,
           zoom: WARSAW_DEFAULT_ZOOM,
           maxBounds: WARSAW_MAX_BOUNDS,
@@ -185,7 +191,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
       toiletMarkers.clear();
       map?.remove();
     };
-  }, [styleUrl, attempt]);
+  }, [attempt]);
 
   useEffect(() => {
     if (locationFlow === 'asking') askHeadingRef.current?.focus();
@@ -364,7 +370,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
           dictionary={dictionary}
           onSelect={(id) => selectToilet(id)}
         />
-      ) : !styleUrl || tilesFailed ? (
+      ) : tilesFailed ? (
         <div className={styles.fallback} role="status">
           <p className={styles.fallbackPunchline}>{dictionary.mapUnavailablePunchline}</p>
           <p className={styles.fallbackExplanation}>{dictionary.mapUnavailableExplanation}</p>

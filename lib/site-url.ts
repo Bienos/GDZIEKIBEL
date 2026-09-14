@@ -11,7 +11,8 @@
  * for local development and this project's own build/e2e verification.
  *
  * Server-only: no client component needs this value, so it is read as a
- * plain (not `NEXT_PUBLIC_`) variable, unlike `NEXT_PUBLIC_MAPTILER_KEY`.
+ * plain (not `NEXT_PUBLIC_`) variable — that prefix is only for a value a
+ * client bundle must read directly.
  * Exported separately from {@link getSiteUrl} so it can be unit tested
  * without mutating the real process environment, the same reason
  * `lib/env/server.ts` exports `parseServerEnv` apart from `getServerEnv`.

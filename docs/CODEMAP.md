@@ -96,9 +96,10 @@ app/
 components/
   map/MapShell.tsx    the Warsaw map (TASK-005), the location permission
                       flow (TASK-006), and nearby toilet markers with
-                      click-to-select (TASK-008); renders the tile fallback
-                      when no provider key is configured or the map fails to
-                      load before its first successful load, independent of
+                      click-to-select (TASK-008); always attempts a real
+                      OpenFreeMap load (ADR 0024 — no key to gate on
+                      anymore) and renders the tile fallback only if that
+                      load fails before its first success; independent of
                       that, the location ask/denied screens on mount and the
                       nearby-toilets fetch centred on the default Warsaw view;
                       owns the map/list `viewMode` toggle (TASK-015), the
@@ -120,7 +121,7 @@ components/
                       which never throws; the `maplibre-gl` script and its
                       stylesheet load together via one `Promise.all` (TASK-025,
                       ADR 0020), so the map's own DOM is never created before
-                      its styles have loaded, on the one path that loads both;
+                      its styles have loaded, on every mount now (ADR 0024);
                       its three location-flow `role="dialog"` screens
                       (`asking`, `denied`, `outside`) are each named via
                       `aria-labelledby` pointing at their own heading
@@ -190,8 +191,10 @@ lib/
   geo/warsaw.ts       coarse Warsaw bounding box, a first filter only;
                       `isWithinWarsawBbox` is also the outside-Warsaw check
                       the location flow uses (TASK-018)
-  map/tile-provider.ts  builds the MapTiler style URL from a key; the one
-                      place that knows the provider's URL shape
+  map/tile-provider.ts  `MAP_STYLE_URL`: the fixed OpenFreeMap style URL
+                      (ADR 0024, superseding ADR 0005's MapTiler-key
+                      setup) — no key needed; the one place that knows
+                      the provider's URL
   map/warsaw-view.ts  initial camera position and pan limits for the map shell
   geolocation/request-location.ts
                       wraps navigator.geolocation in one promise, classified

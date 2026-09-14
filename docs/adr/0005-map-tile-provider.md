@@ -1,6 +1,6 @@
 # ADR 0005 — Map tile provider
 
-Status: Accepted, configurable rather than final
+Status: Superseded by `docs/adr/0024-openfreemap-tile-provider.md` (2026-09-14)
 Date: 2026-09-13
 Scope: TASK-005 — Render Warsaw map shell
 
