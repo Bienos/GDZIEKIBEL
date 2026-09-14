@@ -79,6 +79,19 @@ import styles from './MapShell.module.css';
 type LocationFlowState = 'asking' | 'requesting' | 'granted' | 'denied' | 'outside' | 'dismissed';
 
 /**
+ * How long the map-loading effect below waits for MapLibre to fire either
+ * `load` or `error` before treating the attempt as failed. Both events can
+ * simply never fire — observed directly on a real device (iOS Safari) where
+ * every other client-side effect (the location flow) worked correctly, with
+ * no console error, but the map area itself never resolved either way for
+ * as long as the page stayed open. Without this bound, that leaves the
+ * shell showing neither the map nor the fallback, indefinitely; treating a
+ * silent hang the same as a genuine failure gives the existing retry button
+ * something to recover into instead.
+ */
+const MAP_LOAD_TIMEOUT_MS = 15_000;
+
+/**
  * The exact inputs one fetch of the nearby-toilets effect below ran with.
  * `toiletsLoaded`/`noResultsDismissed` compare the current render's own
  * values against a `SearchParams` recorded from inside a `.then` callback
@@ -142,6 +155,10 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
     let hasLoaded = false;
     let map: import('maplibre-gl').Map | undefined;
 
+    const timeoutId = setTimeout(() => {
+      if (!cancelled && !hasLoaded) setTilesFailed(true);
+    }, MAP_LOAD_TIMEOUT_MS);
+
     // Imported dynamically so the ~200 KB library, and its ~11 KB (gzipped)
     // stylesheet, are never bundled into the main chunk or `globals.css`
     // (TASK-025, `docs/adr/0020-lazy-load-map-library-styles.md`) — a real
@@ -169,6 +186,7 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         map.addControl(new NavigationControl({}), 'top-right');
         map.on('load', () => {
           hasLoaded = true;
+          clearTimeout(timeoutId);
           mapRef.current = map ?? null;
           setMapReady(true);
         });
@@ -176,15 +194,22 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
         // shell; only failing before the map ever loads means the style or
         // key is bad, or the provider is unreachable.
         map.on('error', () => {
-          if (!cancelled && !hasLoaded) setTilesFailed(true);
+          if (!cancelled && !hasLoaded) {
+            clearTimeout(timeoutId);
+            setTilesFailed(true);
+          }
         });
       })
       .catch(() => {
-        if (!cancelled) setTilesFailed(true);
+        if (!cancelled) {
+          clearTimeout(timeoutId);
+          setTilesFailed(true);
+        }
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
       mapRef.current = null;
       setMapReady(false);
       for (const marker of toiletMarkers.values()) marker.remove();

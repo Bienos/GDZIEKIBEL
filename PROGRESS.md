@@ -2203,6 +2203,58 @@ let a real `db:migrate` run apply only the genuinely missing eighth with
 no conflict. Wired in as `pnpm db:reconcile-migration-history && pnpm
 db:migrate && pnpm build`.
 
+**Map not visible on a real device (iOS Safari), 2026-09-14.** The
+project owner reported the map area staying permanently blank on their
+own iPhone: no red console errors, the location-permission dialog still
+appears and responds correctly (proving JS/React hydration itself
+works), and granting location does not make a map appear either. Ruled
+out, each checked directly against production rather than assumed, using
+`scripts/db/check-tile-style.ts` temporarily wired into `vercel.json`'s
+`buildCommand` (Vercel's own build environment has real egress to the
+tile host; this sandboxed session still does not):
+
+1. Tile style URL validity — a direct fetch from Vercel's build
+   environment returned `200` with a real, parseable MapLibre style JSON
+   body.
+2. DNS/reachability — same fetch, no connection failure.
+3. CORS — both the style URL and the vector-source manifest it
+   references (`https://tiles.openfreemap.org/planet`) serve
+   `access-control-allow-origin: *`, checked by printing the header
+   explicitly rather than trusting a bare `200` (Node's own `fetch`
+   never enforces CORS the way a real browser does, so a clean status
+   alone would not have proven a browser could use the response).
+
+With the server side proven correct, the remaining explanation is a
+silent hang inside MapLibre's own WebGL/resource-loading pipeline,
+specific to that device, that this project's toolset cannot reach or
+reproduce directly (no real browser devtools access to that phone).
+Rather than leave this un-diagnosable failure mode unhandled, added a
+concrete, defensible mitigation instead of further guessing at the root
+cause: `MAP_LOAD_TIMEOUT_MS` (`components/map/MapShell.tsx`) bounds how
+long the map-loading effect waits for MapLibre's own `load` or `error`
+event before treating a load that fired neither as failed, showing the
+existing retry fallback instead of hanging indefinitely. Covered by a
+new e2e regression test using Playwright's fake-timer `page.clock` API
+(`e2e/home.spec.ts`) that hangs the tile request deliberately (no
+`fulfill`/`abort`/`continue`) and fast-forwards past the timeout,
+deterministically, without a real 15-second wait — distinct from this
+suite's existing fallback tests, which hit the `error` path (this
+sandbox's lack of egress fails fast) rather than this timeout path.
+
+This mitigates the symptom without knowing the true root cause; it does
+not explain why `load`/`error` never fired on that specific device. Not
+yet confirmed: whether the fallback screen now actually appears after
+~15 seconds when the project owner reloads the live site on the same
+phone — the concrete next check for a future session or the owner
+directly.
+
+Modified: `components/map/MapShell.tsx`, `e2e/home.spec.ts`. Kept in the
+repository, unwired from `buildCommand` (reverted to the steady-state
+`pnpm db:migrate && pnpm build`): `scripts/db/check-tile-style.ts`,
+`scripts/db/reconcile-migration-history.ts` (unrelated, kept from the
+migration-bookkeeping fix above) — both reusable if a similar
+build-time diagnostic is needed again.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -2326,6 +2378,13 @@ Not verifiable in this environment, and therefore not claimed:
   environment is not recorded. Superseded in spirit by the 2026-09-14
   Overpass ingestion above, which succeeded from Vercel's own build
   environment instead — a different, real path to the same result.
+- Whether the `MAP_LOAD_TIMEOUT_MS` fallback (above) actually appears
+  after ~15 seconds on the specific iPhone Safari device that reported a
+  permanently blank map: not yet confirmed. The fix is verified by a
+  deterministic e2e regression test using fake timers, and the tile
+  URL/DNS/CORS server-side causes are ruled out directly against
+  production, but the real device itself has not been re-checked since
+  this fix deployed.
 - The TASK-002 source verification (Warsaw open-data hosts specifically:
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
   `warszawa19115.pl`) still could not be started from this sandboxed

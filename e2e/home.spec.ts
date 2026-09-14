@@ -89,6 +89,35 @@ test('maplibre-gl and its stylesheet are attempted, and still never ship inside 
   }
 });
 
+test('a hung tile load falls back after MAP_LOAD_TIMEOUT_MS instead of hanging forever, even with no error event', async ({
+  page,
+}) => {
+  // Fake timers, not a real 15-second wait: `page.clock` replaces
+  // `setTimeout` before navigation, then `fastForward` fires the pending
+  // one deterministically once the page has otherwise finished loading.
+  await page.clock.install();
+
+  // Intercepted and never settled — no `fulfill`, `abort`, or `continue` —
+  // so MapLibre's own style fetch never resolves or rejects and neither
+  // `load` nor `error` ever fires. That is the real-device symptom
+  // (iOS Safari; no console error; the map area never resolves either way)
+  // that `MAP_LOAD_TIMEOUT_MS` in MapShell.tsx mitigates; it is distinct
+  // from this suite's own sandboxed lack of egress, which instead produces
+  // a fast `error` (the path the other tests above exercise).
+  await page.route('https://tiles.openfreemap.org/**', () => {});
+
+  await page.goto('/pl');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('GdzieKibel.pl');
+
+  // Well before the timeout: the load attempt is still hanging, so neither
+  // the map nor the fallback has resolved either way yet.
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).not.toBeVisible();
+
+  await page.clock.fastForward(15_000);
+
+  await expect(page.getByText('COŚ SIĘ WYSRAŁO.')).toBeVisible();
+});
+
 test('the switch changes every string and the lang attribute, map fallback included', async ({
   page,
 }) => {
