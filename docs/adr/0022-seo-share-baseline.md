@@ -69,13 +69,15 @@ hardcoding it as `metadataBase` would treat an admittedly fragile fact as
 a settled one, the exact thing `ARCHITECTURE.md`'s "Decisions still
 requiring validation" warns against.
 
-`lib/site-url.ts`'s `resolveSiteUrl` instead layers three sources, in
-order: an explicit `SITE_URL` override (unset today; a future session can
-set it the moment a real domain exists, no code change needed); Vercel's
-own auto-provided `VERCEL_URL` (present on every Vercel deployment and
-preview with zero configuration, per `ARCHITECTURE.md`'s own choice of
-Vercel as host); `http://localhost:3000` as the last resort for local
-development and this session's own build/e2e verification. `SITE_URL` is
+`lib/site-url.ts`'s `resolveSiteUrl` instead layers sources, in order: an
+explicit `SITE_URL` override (unset today; a future session can set it the
+moment a real domain exists, no code change needed); on a production
+deployment, Vercel's `VERCEL_PROJECT_PRODUCTION_URL` (see the amendment
+below); Vercel's own auto-provided `VERCEL_URL` (present on every Vercel
+deployment and preview with zero configuration, per `ARCHITECTURE.md`'s
+own choice of Vercel as host); `http://localhost:3000` as the last resort
+for local development and this session's own build/e2e verification.
+`SITE_URL` is
 deliberately not `NEXT_PUBLIC_`-prefixed: `generateMetadata`, `robots.ts`,
 and `sitemap.ts` all run server-side only, so — unlike
 `NEXT_PUBLIC_MAPTILER_KEY`, read directly inside a client component — no
@@ -112,6 +114,36 @@ own fallback chain predicts with no `SITE_URL`/`VERCEL_URL` set.
   `DATABASE_URL`).
 - Any future route needing its own share image or icon can reuse the same
   `ImageResponse` pattern rather than inventing a new one.
+
+## Amendment, 2026-09-14: production prefers the stable host, not the deployment one
+
+The `VERCEL_URL` fallback above is correct that it needs no
+configuration, and wrong about which host it names. `VERCEL_URL` is the
+**deployment-specific** host (`gdziekibel-3y01rbagl-bienos.vercel.app`) —
+a new one per deploy, each an immutable snapshot that never receives
+another build. So a production page using it wrote that frozen host into
+its own `canonical`/`og:url`, and every link copied, shared, or
+bookmarked from the live site pinned its reader to one old build.
+
+That is not hypothetical. This project's owner spent a debugging session
+reloading exactly such a URL, reporting the map still broken, while the
+real fix was already live on the stable host — no redeploy or cache clear
+could ever have changed what that URL served
+(`docs/adr/0026-maplibre-worker-static-asset.md`). This is therefore a
+correctness concern, not the SEO detail the original decision treated it
+as.
+
+`resolveSiteUrl` now prefers `VERCEL_PROJECT_PRODUCTION_URL` — documented
+by Vercel as "the production domain name of the project", auto-provided
+like `VERCEL_URL` and equally configuration-free — whenever
+`VERCEL_ENV === 'production'`. Preview deployments deliberately keep
+`VERCEL_URL`: there the deployment-specific host is the correct
+self-reference, since a preview is not the production site and must not
+advertise itself as one.
+
+Setting `SITE_URL` explicitly still overrides everything and is still the
+right move once a real domain exists; the difference is that the site is
+no longer *wrong* until someone remembers to.
 
 ## Not decided here
 
