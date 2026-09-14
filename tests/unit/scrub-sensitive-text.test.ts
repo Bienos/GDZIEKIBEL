@@ -34,4 +34,34 @@ describe('scrubSensitiveText', () => {
   it('leaves plain text with no coordinate-shaped content untouched', () => {
     expect(scrubSensitiveText('connection refused')).toBe('connection refused');
   });
+
+  it("redacts a connection string's user:password segment, keeping the host and path", () => {
+    expect(
+      scrubSensitiveText(
+        'connect ECONNREFUSED postgres://postgres:example-placeholder-pw@db.example.supabase.co:5432/postgres',
+      ),
+    ).toBe(
+      'connect ECONNREFUSED postgres://[REDACTED_CREDENTIALS]@db.example.supabase.co:5432/postgres',
+    );
+  });
+
+  it('never redacts an ordinary URL with no embedded credential', () => {
+    expect(scrubSensitiveText('fetch failed for https://example.com/path?query=1')).toBe(
+      'fetch failed for https://example.com/path?query=1',
+    );
+  });
+
+  it('redacts a password-keyed value regardless of spelling', () => {
+    expect(scrubSensitiveText('password=hunter2')).toBe('[REDACTED_SECRET]');
+    expect(scrubSensitiveText('"pwd":"hunter2"')).toBe('"[REDACTED_SECRET]');
+    expect(scrubSensitiveText('api_key: sk_live_abc123')).toBe('[REDACTED_SECRET]');
+    expect(scrubSensitiveText('secret=topsecretvalue')).toBe('[REDACTED_SECRET]');
+    expect(scrubSensitiveText('token="abc.def.ghi"')).toBe('[REDACTED_SECRET]');
+  });
+
+  it('never redacts the word "password" on its own with no value', () => {
+    expect(scrubSensitiveText('the password field is required')).toBe(
+      'the password field is required',
+    );
+  });
 });

@@ -51,7 +51,9 @@ app/
                       indexable pages; the bare `/` redirect target is
                       deliberately excluded (TASK-027, ADR 0022)
   api/toilets/nearby/route.ts
-                      POST only; bounded nearby active toilets, filtered
+                      POST only; an oversized body (>8 KiB `content-length`)
+                      is rejected with 413 before it is even parsed
+                      (TASK-029); bounded nearby active toilets, filtered
                       (TASK-016, ADR 0011) and reordered by
                       rankNearbyToilets (TASK-009); also logs the
                       server-observed `results_loaded`/`no_results` and,
@@ -60,25 +62,29 @@ app/
                       validation is caught, logged, and answered with a
                       generic 500 (TASK-024, ADR 0019)
   api/toilets/[id]/reports/route.ts
-                      POST only; a validated, anonymous, rate-limited
-                      report (TASK-020 ADR 0015, TASK-021 ADR 0016): the
-                      rate limit is checked first (429 with Retry-After
-                      over 5/hour per hashed IP), then 400 for a malformed
-                      id or invalid body, 404 for a well-formed but unknown
-                      toilet id, 201 with the created report's id on
-                      success, which also logs the server-observed
-                      `report_submitted` analytics event (TASK-023, ADR
-                      0018); an unexpected throw anywhere in the handler is
-                      caught, logged, and answered with a generic 500
-                      (TASK-024, ADR 0019)
+                      POST only; an oversized body is rejected with 413
+                      before even the rate limit is checked (TASK-029); a
+                      validated, anonymous, rate-limited report (TASK-020
+                      ADR 0015, TASK-021 ADR 0016): the rate limit is
+                      checked first (429 with Retry-After over 5/hour per
+                      hashed IP), then 400 for a malformed id or invalid
+                      body, 404 for a well-formed but unknown toilet id,
+                      201 with the created report's id on success, which
+                      also logs the server-observed `report_submitted`
+                      analytics event (TASK-023, ADR 0018); an unexpected
+                      throw anywhere in the handler is caught, logged, and
+                      answered with a generic 500 (TASK-024, ADR 0019)
   api/analytics/events/route.ts
-                      POST only; a validated, anonymous first-party
-                      analytics event (TASK-023, ADR 0018): 400 for an
-                      unrecognised `eventName`, 201 on success; the write
-                      itself never fails the request (insertAnalyticsEvent
-                      never throws); an unexpected throw from `getPool()`
-                      itself is caught, logged, and answered with a
-                      generic 500 (TASK-024, ADR 0019)
+                      POST only; an oversized body is rejected with 413,
+                      then a rate limit is checked before the body is even
+                      parsed (429 with Retry-After over 120/hour per hashed
+                      IP — TASK-029, ADR 0023, closing the gap TASK-023 left
+                      open), then 400 for an unrecognised `eventName`, 201
+                      on success; the write itself never fails the request
+                      (insertAnalyticsEvent never throws); an unexpected
+                      throw from the rate-limit check or `getPool()` itself
+                      is caught, logged, and answered with a generic 500
+                      (TASK-024, ADR 0019)
   globals.css         reset, body defaults, imports tokens.css; maplibre-gl's
                       own stylesheet is not imported here (TASK-025, ADR
                       0020) — it loads only alongside the script that needs
@@ -285,6 +291,19 @@ lib/
                       throws and never rejects — a caller fires it without
                       awaiting, and a failure here must never look like the
                       feature it is attached to broke (TASK-023)
+  analytics/rate-limit.ts
+                      the analytics endpoint's rate limiter (TASK-029, ADR
+                      0023): same one-hour fixed window and SHA-256 IP hash
+                      as reports/rate-limit.ts, but its own 120-requests
+                      limit and its own table — a deliberate sibling, not a
+                      shared import, so the already-shipped report limiter
+                      is never touched by this task
+  http/content-length.ts
+                      exceedsMaxRequestBodyBytes (TASK-029): a fast,
+                      pre-parse `content-length` check (8 KiB) shared by
+                      all three POST routes; a best-effort guard, not a
+                      guarantee — a request with no `content-length` relies
+                      on the hosting platform's own size limit instead
   observability/log-runtime-error.ts
                       the one place a runtime error becomes observable
                       (TASK-024, ADR 0019): a structured JSON `console.error`
@@ -293,10 +312,13 @@ lib/
                       it, by construction; the message/stack still passes
                       through `scrubSensitiveText` as a second layer
   observability/scrub-sensitive-text.ts
-                      redacts a decimal coordinate pair or a `lat`/`lng`/
-                      `lon`-keyed number from free text (TASK-024, ADR
-                      0019); bounded like `parseCharge`/`parseOpeningHours`
-                      — a bare decimal (a price, an ETA) is left alone
+                      redacts a decimal coordinate pair, a `lat`/`lng`/
+                      `lon`-keyed number, a URL's `user:password@` segment,
+                      or a `password`/`secret`/`token`-keyed value from free
+                      text (TASK-024 ADR 0019; credential/secret patterns
+                      added TASK-029); bounded like `parseCharge`/
+                      `parseOpeningHours` — a bare decimal or an ordinary
+                      credential-free URL is left alone
   ingest/upsert.ts    source-agnostic write path; never deletes, marks
                       not_seen_since; writes open_24h/opening_hours_normalized
                       since TASK-013, price_amount_minor/currency and the
@@ -353,6 +375,11 @@ db/
                       attached to — but is no longer silent: the caught
                       error is logged via `logRuntimeError` (TASK-024,
                       ADR 0019)
+  queries/analytics-rate-limit.ts
+                      checkAndIncrementAnalyticsRateLimit (TASK-029, ADR
+                      0023): the same atomic INSERT ... ON CONFLICT ...
+                      RETURNING shape as report-rate-limit.ts, against its
+                      own `analytics_rate_limit_windows` table
 db/
   client.ts           shared pg connection pool; `pool.on('error', ...)`
                       routes an idle client's own failure through
@@ -377,6 +404,11 @@ db/
                       adds analytics_events, analytics_event_name
                       (TASK-023, ADR 0018); no location/session/device
                       column
+    *_add-analytics-rate-limit.sql
+                      adds analytics_rate_limit_windows (TASK-029, ADR
+                      0023) — same shape as report_rate_limit_windows, a
+                      separate table so the two endpoints' very different
+                      limits never share one counter
 scripts/
   db/check-postgis.ts PostGIS health check (pnpm db:check)
   ingest/osm.ts       the ingestion command (pnpm ingest:osm); logs a
@@ -411,6 +443,8 @@ Ownership:
 - `.env.example` — variable names only
 - `vercel.json` — framework, lockfile-enforced install, security headers
 - `.github/workflows/ci.yml` — `quality`, `database` and `e2e` jobs
+- `.github/dependabot.yml` — weekly npm and github-actions update checks
+  (TASK-029)
 
 ## Decisions
 

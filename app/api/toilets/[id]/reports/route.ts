@@ -3,6 +3,7 @@ import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { getPool } from '@/db/client';
 import { checkAndIncrementRateLimit } from '@/db/queries/report-rate-limit';
 import { insertReport, toiletExists } from '@/db/queries/reports';
+import { exceedsMaxRequestBodyBytes } from '@/lib/http/content-length';
 import { logRuntimeError } from '@/lib/observability/log-runtime-error';
 import { parseReportRequest, parseToiletId } from '@/lib/reports/report-request';
 import {
@@ -35,8 +36,15 @@ import {
  * `docs/adr/0019-runtime-error-logging.md`) is caught, logged with no
  * request body or coordinate in scope, and answered with one generic
  * `500` — never the framework default.
+ *
+ * Rejects an oversized body before even the rate limit is checked
+ * (TASK-029, `lib/http/content-length.ts`).
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (exceedsMaxRequestBodyBytes(request)) {
+    return NextResponse.json({ error: 'Request body too large.' }, { status: 413 });
+  }
+
   try {
     const pool = getPool();
     const now = new Date();

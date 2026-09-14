@@ -1771,6 +1771,231 @@ repository is imported from the Vercel dashboard:
   `package.json`, not from the committed tree;
 - `vercel.json` was not exercised by that build.
 
+**Supabase staging database provisioned, then found no longer visible,
+2026-09-14.** At the project owner's request, a Supabase organisation and
+a Frankfurt-region (`eu-central-1`) project were created via the Supabase
+MCP tools as a candidate real Postgres/PostGIS host — `ARCHITECTURE.md`
+section 2 names Neon as the default recommendation, not a requirement,
+and the owner asked to use Supabase instead. Row Level Security was
+enabled on the project's seven application tables (every table this
+project's own migrations created, excluding `spatial_ref_sys`, a
+PostGIS-owned system table this project's connecting role does not own
+and does not need to lock down — it holds only static public reference
+data), closing the exposed-public-API gap Supabase's own tooling flags by
+default on a fresh project. Neither the connection string nor its
+password was ever committed to this repository. Wiring the real
+connection string into `.env.local` and running `pnpm db:check` failed
+with a DNS resolution error (`getaddrinfo ENOTFOUND
+db.<ref>.supabase.co`) — the same class of direct-egress restriction
+already recorded below for `api.maptiler.com` and the Warsaw/OSM hosts —
+confirming this session cannot reach it directly; `.env.local` was
+reverted to the local development database afterward.
+
+As of TASK-029's own audit (2026-09-14), `list_organizations` and
+`list_projects` through the same Supabase MCP tools no longer show that
+organisation or project at all: only a pre-existing, unrelated `SLIYD`
+organisation and its `SLIYD SALES COACH` project (`eu-west-1`) are
+visible from this session. Whether the Frankfurt project still exists
+under different access, or was removed, is not established from here —
+recorded as an open, observed fact, not resolved either way, since this
+session cannot currently query it to find out.
+
+### TASK-029 — Security/privacy review
+
+Complete on 2026-09-14. Specified in
+`tasks/029-security-privacy-review.md`; the one new design decision
+(the analytics rate limiter) recorded in
+`docs/adr/0023-analytics-rate-limiting.md`.
+
+**A systematic checklist audit, not a fix-on-instinct pass.** A
+read-only audit was run first, across every route, query, and config
+file named in the task's own "Likely relevant code," checking each
+`ARCHITECTURE.md` section 16 control and `PRODUCT.md` section 14 privacy
+requirement against what the code actually does — not assuming a control
+holds because an earlier task intended it. Thirteen findings came back;
+each was independently verified against the real source before deciding
+whether to fix it, name it as a deferred gap, or record it as an
+already-satisfied pass.
+
+**MVP threat priorities (`ARCHITECTURE.md` section 16), checked one by
+one:**
+
+- *Report endpoint spam* — still `PASS`, unchanged since TASK-021.
+- *Oversized/malformed input* — a real gap: `request.json()` was called
+  on all three write routes with no size check first, so an arbitrarily
+  large body would be fully buffered and parsed before Zod's own
+  `max()`/`strictObject` checks ever saw it. Fixed:
+  `lib/http/content-length.ts`'s `exceedsMaxRequestBodyBytes` rejects any
+  request whose `content-length` exceeds 8 KiB (generous — the largest
+  real body, a report's 1000-character `note`, is under 1.1 KB) with a
+  `413`, before the body is read, on all three routes. A best-effort
+  guard, not a guarantee: a request with no `content-length` (chunked
+  transfer-encoding) is not caught here, and relies on the hosting
+  platform's own limit (`ARCHITECTURE.md` section 2: Vercel) as the
+  backstop — recorded, not silently assumed away.
+- *Injection attempts* — re-verified `PASS`: every `db/queries/*.ts`
+  file uses parameterised `$1`-style bindings; grepping the whole
+  `db/queries/` and `db/` tree for string-concatenated SQL found none.
+- *Source ingestion poisoning/malformed datasets* — re-verified `PASS`:
+  every adapter's output is still validated against
+  `lib/toilets/normalized-source-record.ts`'s Zod schema before
+  `lib/ingest/upsert.ts` ever writes it (TASK-003).
+- *Exposed database credentials* — split into two findings. Direct
+  exposure is `PASS`: `DATABASE_URL` is never logged (confirmed by
+  re-reading every `logRuntimeError` call site), `.env.local` is
+  gitignored, and `.env.example` carries no real value. A second-layer
+  gap was real, though: a Postgres driver error that happened to echo a
+  connection string (a documented real-world `pg` failure mode) would
+  have reached `logRuntimeError` with its password intact, since
+  `scrubSensitiveText` only redacted coordinates. Fixed (below).
+  Separately, **least-privilege credentials remain a named, unfixed
+  gap**: this project's only working credential today is the local
+  development role (`postgres`/`postgres`), a superuser appropriate only
+  for a database no one else can reach. Whatever real Postgres a
+  production deployment eventually uses needs its own dedicated role,
+  granted only what `db/queries/*.ts` actually issues
+  (`SELECT`/`INSERT`/`UPDATE` on the specific application tables, no
+  DDL, no other schemas) — real infrastructure work this session cannot
+  do blind, per the task's own scope, and there is currently no
+  reachable real Postgres to do it against (see the Supabase note
+  above).
+- *Accidental location logging* — re-verified `PASS`: no route logs a
+  request body or coordinate (TASK-024's own smoke test already proved
+  this directly), and `scrubSensitiveText` remains a working second
+  layer for the one case that carries text this project did not itself
+  construct.
+
+**Controls (`ARCHITECTURE.md` section 16), checked one by one:**
+
+- *Schema validation*, *parameterised queries*, *server-controlled
+  limits* — `PASS` (the last now also covers request body size, above).
+- *Rate limiting for report writes* — `PASS`, unchanged (TASK-021). The
+  sibling gap `docs/adr/0018-first-party-analytics.md` named — no rate
+  limiting on `POST /api/analytics/events` — is fixed: see
+  `docs/adr/0023-analytics-rate-limiting.md`. A second table
+  (`analytics_rate_limit_windows`), a second pure module
+  (`lib/analytics/rate-limit.ts`, deliberately not importing from
+  `lib/reports/rate-limit.ts` — see the ADR's reasoning), and a much
+  higher limit (120/hour vs. 5/hour) suited to analytics' legitimate
+  traffic shape. Checked first in the route, before the body is parsed,
+  matching the report endpoint's existing order.
+- *CSRF considerations for write endpoints, "where applicable"* — checked
+  and found not applicable, not skipped: grepping the whole application
+  tree for `cookie`/`session`/`credentials: 'include'` found no match
+  outside a handful of code comments using the word "session" to mean
+  "no session data," never an actual cookie or session mechanism. All
+  three write endpoints are unauthenticated, credential-free JSON POSTs
+  — there is no ambient browser-attached credential a cross-site request
+  could ride on, which is what classic CSRF depends on. Consistent with
+  `ARCHITECTURE.md` section 16's own closing line: "No authentication
+  subsystem is needed for public MVP user flows."
+- *Least-privilege database credentials* — named gap, not fixed; see
+  above.
+- *Secrets only in environment/secret stores* — `PASS`, re-verified: no
+  hardcoded secret found anywhere in the tree; extended
+  `scrubSensitiveText` (`lib/observability/scrub-sensitive-text.ts`) now
+  also redacts a URL's `user:password@` segment and a
+  `password`/`secret`/`api_key`/`token`-keyed value, closing the
+  connection-string-in-an-error-message gap named above as a
+  defense-in-depth second layer — the same "prevented by construction,
+  then scrubbed as second layer" shape TASK-024 established.
+- *Dependency scanning in CI* — a real gap: no Dependabot or equivalent
+  configuration existed. Fixed: `.github/dependabot.yml`, weekly checks
+  for both the `npm` (this project's pnpm lockfile) and `github-actions`
+  ecosystems — no new CI job, Dependabot runs independently of
+  `.github/workflows/ci.yml`.
+- *Security headers* — three existed (`X-Content-Type-Options`,
+  `Referrer-Policy`, `X-Frame-Options`). Extended `vercel.json` with
+  `Strict-Transport-Security` (`max-age=63072000; includeSubDomains;
+  preload` — safe here since Vercel serves HTTPS-only), `Permissions-Policy`
+  (`geolocation=(self)` — explicit, since this app is one of the few
+  legitimate users of the browser geolocation API; `camera=()`,
+  `microphone=()`, `payment=()` for features nothing here uses), and
+  `Cross-Origin-Opener-Policy: same-origin`. Deliberately **not** added:
+  `X-XSS-Protection` (obsolete; modern browsers ignore it, and it has its
+  own history of introducing vulnerabilities when honoured) and a
+  Content-Security-Policy — building one correctly needs the real, live
+  set of script/style/connect sources MapLibre GL and a real tile
+  provider actually use, which no session this far has been able to
+  observe (no `NEXT_PUBLIC_MAPTILER_KEY`/egress in any session to date);
+  a guessed CSP risks silently breaking the map, the product's core
+  feature, worse than the gap it would close. Named, not silently
+  skipped. **Not independently verified against a running server**:
+  `vercel.json`'s `headers` block only takes effect on Vercel's own edge
+  layer, not under `next dev`/`next build`/`next start` — the same
+  limitation already recorded for the three pre-existing headers
+  (`vercel.json` was not exercised by the one real production build,
+  above). Confirmed only that the file is valid JSON and that
+  `pnpm build` still succeeds with it present.
+
+**`PRODUCT.md` section 14 privacy requirements, re-checked:**
+
+- *No account for core use* — `PASS`, no authentication subsystem exists.
+- *No precise live location in the product database* — `PASS`: `toilets`
+  stores only each toilet's own fixed location; no table stores a user's
+  location (re-confirmed by re-reading every migration's columns).
+- *No precise coordinates in analytics or request URLs* — `PASS`:
+  `analytics_events` has no coordinate column; `POST /api/toilets/nearby`
+  carries coordinates in the body, never the URL (`ARCHITECTURE.md`
+  section 8's own preference), and they are never persisted.
+- *No unnecessary third-party trackers* — `PASS`: `package.json` has no
+  analytics SDK dependency; the one analytics path is the first-party
+  Postgres table from TASK-023.
+- *External services that receive IP/location-derived data are
+  documented* — trivially `PASS` today: no external analytics or tile
+  provider is actually live in any session yet (both remain "Known
+  unresolved decisions," unchanged by this task), so none currently
+  receives anything. The rate limiters' hashed IP is stored, never sent
+  externally. Whichever tile/analytics provider is eventually chosen
+  will need this documented at that time, not assumed clean by default.
+- *OpenStreetMap ODbL attribution* — re-checked, still open, no new
+  information: `PROGRESS.md`'s existing "Known unresolved decisions"
+  already flags the licence-text/Derivative-Database question for legal
+  review, and that remains exactly as unresolved as before this task
+  left it. A narrower, already-satisfied point is worth separating from
+  it: `MapShell.tsx`'s comment (TASK-005) already documents that
+  MapLibre's default attribution control is deliberately left on because
+  "MapTiler's terms require it" — that is tile-attribution compliance, a
+  different and already-handled concern from the broader
+  Derivative-Database question, which is not this task's to resolve
+  blind.
+
+Created: `db/migrations/1789398398680_add-analytics-rate-limit.sql`,
+`db/queries/analytics-rate-limit.ts`, `lib/analytics/rate-limit.ts`,
+`lib/http/content-length.ts`, `docs/adr/0023-analytics-rate-limiting.md`,
+`tasks/029-security-privacy-review.md`, `.github/dependabot.yml`.
+`tests/unit/analytics-rate-limit.test.ts` (11 tests),
+`tests/unit/content-length.test.ts` (6 tests),
+`tests/integration/analytics-rate-limit.test.ts` (3 tests, real
+Postgres).
+
+Modified: `app/api/analytics/events/route.ts` (rate limit + body-size
+guard), `app/api/toilets/[id]/reports/route.ts` and
+`app/api/toilets/nearby/route.ts` (body-size guard only — their own
+existing behaviour otherwise unchanged),
+`lib/observability/scrub-sensitive-text.ts` (credential/secret
+redaction, 4 new unit tests), `vercel.json` (three new headers).
+
+Verified: lint (no findings), format (two new test files needed
+`prettier --write`, then clean), typecheck, 294 unit tests in 41 files
+(21 new: 11 `analytics-rate-limit`, 6 `content-length`, 4
+`scrub-sensitive-text` additions), 49 integration tests in 9 files (3
+new, against a real local PostgreSQL/PostGIS after running
+`pnpm db:migrate` for the new table), the production build (new routes
+unaffected; `/api/analytics/events` still listed as dynamic), and all 20
+Playwright tests unchanged (no user-visible behaviour changed for a
+client under any limit). Real-database rows the e2e run and the new
+integration tests left behind (`analytics_events`,
+`analytics_rate_limit_windows`) were deleted afterward, the same
+recurring local-webServer-reuse pollution already recorded below.
+
+Not created, by design: an authentication subsystem, new infrastructure
+(a WAF, a secrets manager, a SAST service) without evidence, any change
+to a route's success-path response shape, a Content-Security-Policy
+(named above as deliberately deferred, not silently skipped), and any
+attempt at TASK-030's independent review or TASK-031's staging
+verification — this task's own scope was the code/config audit only.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
@@ -1887,45 +2112,75 @@ Not verifiable in this environment, and therefore not claimed:
   `dane.um.warszawa.pl`, `api.um.warszawa.pl`, `iot.warszawa.pl`,
   `warszawa19115.pl` and `overpass-api.de`. No Warsaw or OpenStreetMap value has
   been observed, so none is recorded as fact.
+- A real Postgres/PostGIS host reachable from this session for TASK-028: the
+  one candidate provisioned this session (Supabase, Frankfurt — see the
+  "Owner-directed additions" note above) failed a real connectivity smoke
+  test with a DNS resolution error, the same direct-egress restriction as
+  every host above, and is now not even visible through this session's own
+  Supabase MCP access. TASK-028 (`PLAN.md` Milestone 5) remains blocked on
+  this, unchanged since it was first named.
+- Least-privilege database credentials (`ARCHITECTURE.md` section 16,
+  TASK-029's own audit): cannot be created or verified without a reachable
+  real Postgres this session can administer, which does not currently exist
+  (see above).
+- `vercel.json`'s security headers (three pre-existing, three added by
+  TASK-029) are not verifiable against a running server from this
+  environment: the `headers` block only takes effect on Vercel's own edge
+  layer, not under `next dev`/`next build`/`next start`.
 
 ## Next approved task
 
-One live ingestion run, from a session in the GdzieKibel cloud environment:
+`TASK-029 — Security/privacy review` is complete (above). `PLAN.md`'s
+Milestone 5 order is `TASK-028` next, but that remains the same real,
+named blocker this file has recorded since before TASK-029 started — see
+"Unresolved blockers" above — so the next task a session can actually run
+without fabricating evidence is `TASK-030 — Independent release review`:
+`PLAN.md` describes it as "a fresh reviewer checks the release candidate
+against `PRODUCT.md`, `ARCHITECTURE.md` and completed task criteria
+without modifying code," which needs no staging deployment, database, or
+map-tile access — the same reason TASK-029 itself was reachable when
+TASK-028 was not.
 
-```
-git pull && pnpm install --frozen-lockfile
-pnpm db:migrate
-pnpm ingest:osm
-```
+Also still outstanding, unrelated to the Milestone 5 sequence:
 
-Record the boundary relation it resolves and its counts here. That closes
-TASK-004 and, with the same run, most of the TASK-002 observation gaps.
+- One live OSM ingestion run, from a session with working egress to
+  `overpass-api.de`:
 
-Two things, in order:
+  ```
+  git pull && pnpm install --frozen-lockfile
+  pnpm db:migrate
+  pnpm ingest:osm
+  ```
 
-1. Visually confirm the map shell renders real tiles and a real location dot,
-   from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
-   to `api.maptiler.com`.
-2. `TASK-028 — Milestone integration verification` per `PLAN.md`
-   (Milestone 5 — Release hardening): "full core journey is run against
-   real staging stack; integration defects only are fixed." This is a
-   real, named blocker for this session, not a task to start blind: a
-   "real staging stack" needs a real deployed environment this session
-   cannot create (the one existing deployment,
+  Record the boundary relation it resolves and its counts here. That
+  closes TASK-004 and, with the same run, most of the TASK-002
+  observation gaps.
+- Visually confirm the map shell renders real tiles and a real location
+  dot, from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working
+  egress to `api.maptiler.com`.
+
+Blocked, in order, behind real access this session does not have — do not
+attempt from an environment shaped like this one, per `AGENTS.md`'s
+verification rule against fabricating a result rather than observing one:
+
+1. `TASK-028 — Milestone integration verification` — needs a real
+   deployed staging stack (the one existing deployment,
    `gdziekibel-bienos.vercel.app`, is recorded above as an unofficial,
    manually-uploaded stopgap that does not rebuild on push, not a staging
-   stack) and real map-tile access (no `NEXT_PUBLIC_MAPTILER_KEY`/egress
-   in this session, the same constraint recorded by every prior task).
-   `SITE_URL` (TASK-027) and a real `NEXT_PUBLIC_MAPTILER_KEY` are the two
-   concrete missing pieces standing between this project and a session
-   that can actually run TASK-028 as `PLAN.md` describes it. Before
-   starting, read `docs/adr/0022-seo-share-baseline.md` and every prior
-   task's own "no egress/no key" note (TASK-004, TASK-022, TASK-025) —
-   the pattern is consistent enough across this whole session that
-   attempting TASK-028 from an environment shaped like this one would
-   mean fabricating a "staging" result rather than observing one, exactly
-   what `AGENTS.md`'s verification rule forbids. If a future session has
-   real access, its own task file should name what it can newly observe
-   (real tiles, a real deployment's actual Core Web Vitals, a real
-   Lighthouse run against the real `SITE_URL`) rather than repeating this
-   session's fallback-path-only evidence.
+   stack) and real map-tile access. `SITE_URL` (TASK-027) and a real
+   `NEXT_PUBLIC_MAPTILER_KEY` are the two concrete missing pieces.
+2. `TASK-031 — Staging release verification` and `TASK-032 — Production
+   release` — both need the same real deployed environment TASK-028
+   does, plus (`TASK-031`) a real migration/rollback rehearsal against a
+   real, reachable Postgres. The one candidate this session provisioned
+   (Supabase, Frankfurt) is not reachable from here either — see the
+   "Owner-directed additions" note above.
+
+Before starting any of the three, read `docs/adr/0022-seo-share-baseline.md`
+and every prior task's own "no egress/no key" note (TASK-004, TASK-022,
+TASK-025, TASK-029) — the pattern is consistent enough across this whole
+session that a future session with real access should name what it can
+newly observe (real tiles, a real deployment's actual Core Web Vitals, a
+real Lighthouse run against the real `SITE_URL`, a real least-privilege
+database role) rather than repeating this session's fallback-path-only
+evidence.

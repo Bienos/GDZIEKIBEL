@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { insertAnalyticsEvent } from '@/db/queries/analytics';
 import { getPool } from '@/db/client';
 import { findNearbyToilets } from '@/db/queries/nearby';
+import { exceedsMaxRequestBodyBytes } from '@/lib/http/content-length';
 import { logRuntimeError } from '@/lib/observability/log-runtime-error';
 import { filterNearbyToilets } from '@/lib/toilets/filter-nearby';
 import { parseNearbyRequest } from '@/lib/toilets/nearby-request';
@@ -39,8 +40,15 @@ import { rankNearbyToilets } from '@/lib/toilets/rank-nearby';
  * `docs/adr/0019-runtime-error-logging.md`) is caught, logged with no
  * request body or coordinate in scope, and answered with one generic
  * `500` — never the framework default.
+ *
+ * Rejects an oversized body before it is even parsed (TASK-029,
+ * `lib/http/content-length.ts`).
  */
 export async function POST(request: Request) {
+  if (exceedsMaxRequestBodyBytes(request)) {
+    return NextResponse.json({ error: 'Request body too large.' }, { status: 413 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
