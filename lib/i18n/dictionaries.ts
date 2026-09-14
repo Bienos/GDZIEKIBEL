@@ -254,7 +254,8 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     noResultsExhaustedBody: 'Nic nie znaleźliśmy nawet w najszerszym promieniu wyszukiwania.',
     noResultsExhaustedAction: 'ROZUMIEM',
     metaTitle: 'GdzieKibel.pl',
-    metaDescription: 'GdzieKibel.pl — publiczne toalety w Warszawie. Wersja fundamentowa.',
+    metaDescription:
+      'Warszawa nie trzyma. Znajdź najbliższy publiczny kibel w Warszawie — szybko, bez rejestracji.',
   },
   en: {
     stage: 'Project foundation',
@@ -338,7 +339,7 @@ export const DICTIONARIES: Record<Locale, Dictionary> = {
     noResultsExhaustedBody: 'Nothing here, even at our widest search radius.',
     noResultsExhaustedAction: 'GOT IT',
     metaTitle: 'GdzieKibel.pl',
-    metaDescription: 'GdzieKibel.pl — public toilets in Warsaw. Foundation build.',
+    metaDescription: 'Find the nearest public toilet in Warsaw — fast, no sign-up.',
   },
 };
 

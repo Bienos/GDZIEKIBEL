@@ -24,9 +24,32 @@ Task specifications live in `tasks/`.
 ```text
 app/
   [locale]/
-    layout.tsx        root layout, <html lang> per locale, metadata, hreflang
+    layout.tsx        root layout, <html lang> per locale, metadata, hreflang;
+                      also the app's effective root layout (no page exists
+                      outside `[locale]`), so `metadataBase` lives here
+                      (TASK-027, ADR 0022) — required once `openGraph`
+                      uses a relative image path, or the build fails;
+                      `generateMetadata` also sets `openGraph`/`twitter`
+                      blocks from the same real per-locale copy
     page.tsx          top bar (wordmark, language switch) + the map shell
     page.module.css   styles for the top bar and page layout
+    opengraph-image.tsx
+                      code-generated, locale-aware share image via
+                      `next/og` (TASK-027, ADR 0022): no design asset
+                      pipeline exists, so this reads `tokens.css` colours
+                      and the real `metaTitle`/`metaDescription` copy;
+                      `generateStaticParams` makes it build-time static,
+                      not per-request
+  icon.tsx            code-generated favicon via `next/og` (TASK-027, ADR
+                      0022): the same "WC" mark
+                      `lib/toilets/marker-element.ts` puts on every map
+                      marker, so the tab icon and in-app marker share one
+                      visual language
+  robots.ts           allows crawling, points at the real sitemap
+                      (TASK-027, ADR 0022)
+  sitemap.ts          lists `/pl` and `/en` — the only two real,
+                      indexable pages; the bare `/` redirect target is
+                      deliberately excluded (TASK-027, ADR 0022)
   api/toilets/nearby/route.ts
                       POST only; bounded nearby active toilets, filtered
                       (TASK-016, ADR 0011) and reordered by
@@ -144,7 +167,16 @@ components/
   map/MapShell.module.css
 lib/
   env/server.ts       the only validated reader of server environment variables
-  i18n/               supported locales and the copy dictionaries
+  site-url.ts         resolves the site's own absolute base URL (TASK-027,
+                      ADR 0022): an explicit `SITE_URL` override, else
+                      Vercel's own auto-provided `VERCEL_URL`, else
+                      `localhost` — never a hardcoded, unsettled domain;
+                      server-only, so not `NEXT_PUBLIC_`; feeds
+                      `metadataBase`, `robots.ts`, `sitemap.ts`
+  i18n/               supported locales and the copy dictionaries;
+                      `metaDescription` is real, current copy from
+                      `BRAND.md`'s own approved lines (TASK-027, ADR
+                      0022), not the TASK-001 "Foundation build" leftover
   toilets/types.ts    enumerated values of the toilet model, mirroring the SQL types;
                       also PaymentMethods (TASK-014), the cash/cards/coins shape
   toilets/normalized-source-record.ts
@@ -487,6 +519,17 @@ Ownership:
   status, marker labels, reduced motion, focus-visible) — all already
   passing, read directly rather than assumed; real screen-reader/keyboard
   and real-map-tile checks remain unverifiable from this session.
+- `docs/adr/0022-seo-share-baseline.md` — code-generated `icon`/
+  `opengraph-image` via `next/og` (no design asset pipeline exists),
+  built from `tokens.css` colours and `BRAND.md`'s already-approved copy;
+  `metaDescription`'s stale TASK-001 "Foundation build" text replaced with
+  real, current, on-brand copy; `SITE_URL` → `VERCEL_URL` → localhost
+  resolves `metadataBase`/`robots.ts`/`sitemap.ts` rather than hardcoding
+  the recorded-as-unofficial `gdziekibel-bienos.vercel.app` deployment as
+  a settled domain. Verified with a real curl smoke test against a
+  running production build: real favicon, real per-locale OG images
+  (visually confirmed on-brand), real `robots.txt`/`sitemap.xml`, and a
+  complete `openGraph`/`twitter` `<head>` block with absolute URLs.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -628,8 +671,19 @@ code-level review, not a blanket claim, confirmed touch targets
 already correct; reduced motion is trivially satisfied since this app's
 own CSS has no animation to gate. Real screen-reader/keyboard-only
 testing and anything depending on real map tiles remain unverifiable
-from this session, named honestly rather than assumed. Ingestion exists
-but has never run against the live source — so
+from this session, named honestly rather than assumed. A real SEO/share
+baseline now exists (TASK-027, ADR 0022): a code-generated favicon and
+locale-aware Open Graph/Twitter image (no design asset pipeline exists,
+so both are built from `tokens.css` colours and `BRAND.md`'s already-
+approved copy, reusing the exact "WC" mark every map marker already
+shows), a `metadataBase`/`robots.ts`/`sitemap.ts` resolved through
+`SITE_URL` → Vercel's own `VERCEL_URL` → localhost rather than a guessed
+domain, and a `metaDescription` no longer describing a TASK-001
+foundation state twenty-six tasks out of date. Verified with a real curl
+smoke test against a running production build. The real production
+domain remains an open, project-owner decision — `SITE_URL` is the one
+setting a future session needs once it exists. Ingestion exists but has
+never run against the live source — so
 the opening-hours and charge parsers, and the confidence computation,
 have never seen a real OSM string, only constructed fixtures matching
 their documented grammars — and the map — tiles, the location dot, and

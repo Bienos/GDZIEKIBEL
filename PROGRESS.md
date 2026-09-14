@@ -1657,6 +1657,97 @@ conformance claim beyond what was actually checked (this is not a full
 WCAG audit, only the two automated findings plus a targeted manual
 review of `PRODUCT.md` section 15's remaining checks).
 
+### TASK-027 — SEO/share baseline
+
+Complete on 2026-09-14. Specified in `tasks/027-seo-share-baseline.md`;
+decision recorded in `docs/adr/0022-seo-share-baseline.md`.
+
+**Read what already existed before building anything.** `PRODUCT.md`
+section 17's MVP checklist: indexable home page, correct title/
+description/OG image/favicon. `app/[locale]/layout.tsx`'s
+`generateMetadata` already had a real per-locale `title`/`description`
+and `alternates.canonical`/`languages` (TASK-002's language switch).
+Direct inspection found the real gaps: no `public/` directory at all, no
+favicon, no `openGraph`/`twitter` block, no `metadataBase`, no
+`robots.ts`, no `sitemap.ts` — and `metaDescription`'s own copy in both
+locales was a stale TASK-001 leftover ("Foundation build") describing a
+state the product left behind twenty-six tasks ago.
+
+**Code-generated assets, not invented design.** No design asset pipeline
+exists in this repository. This Next.js version's own file-convention
+docs document generating `icon`/`opengraph-image` via `next/og`'s
+`ImageResponse` — a real, first-party mechanism. Both read this project's
+own `tokens.css` colours (signal yellow, ink, paper) and reuse the exact
+"WC" mark `lib/toilets/marker-element.ts` already puts on every map
+marker, so the tab icon and the in-app marker read as one visual
+language. Added `generateStaticParams` to `opengraph-image.tsx` so both
+locales build statically (confirmed in the build output: dynamic → two
+prerendered routes) rather than regenerating per request.
+
+**`metaDescription` fixed with already-approved brand copy.** `BRAND.md`
+section 6 approves "WARSZAWA NIE TRZYMA. MY SZUKAMY."; section 10
+approves "WARSZAWA NIE TRZYMA." for exactly this external-facing,
+shareable context. The Polish description reuses that approved phrase
+with a literal factual clause; the English description stays literal
+throughout, matching this project's established PL-brash/EN-plain
+localisation pattern. The visible in-page "stage" badge was deliberately
+left untouched — a separate UI-copy decision outside this task's
+metadata scope.
+
+**`SITE_URL` resolves from the real deployment, never a guessed domain.**
+Next.js's own docs are explicit: a relative URL-based metadata field
+(the Open Graph image, here) without `metadataBase` is a build error, not
+a graceful fallback. `PROGRESS.md` already records this project's one
+existing deployment (`gdziekibel-bienos.vercel.app`) as an unofficial,
+manually-uploaded stopgap that does not even rebuild on push —
+hardcoding it would treat a fragile fact as a settled one.
+`lib/site-url.ts`'s `resolveSiteUrl` instead layers three sources: an
+explicit `SITE_URL` override (unset today), Vercel's own auto-provided
+`VERCEL_URL` (zero configuration needed on the real host `ARCHITECTURE.md`
+already chose), then `http://localhost:3000`. Deliberately not
+`NEXT_PUBLIC_`-prefixed, unlike `NEXT_PUBLIC_MAPTILER_KEY`: only
+server-side code (`generateMetadata`, `robots.ts`, `sitemap.ts`) ever
+needs it.
+
+**`robots.ts`/`sitemap.ts` point at the two real canonical URLs.**
+`sitemap.ts` lists `/pl` and `/en` only — the bare `/` redirect target is
+deliberately excluded, since a sitemap should name final canonical URLs.
+`robots.ts` allows crawling everything (`/api/*` are POST-only endpoints
+a crawler cannot usefully request anyway) and points at the real sitemap.
+
+Created: `app/icon.tsx`, `app/[locale]/opengraph-image.tsx`,
+`app/robots.ts`, `app/sitemap.ts`, `lib/site-url.ts`,
+`docs/adr/0022-seo-share-baseline.md`, `tasks/027-seo-share-baseline.md`.
+`tests/unit/site-url.test.ts` (new, 3 tests).
+
+Modified: `app/[locale]/layout.tsx` (`metadataBase`, `openGraph`,
+`twitter`), `lib/i18n/dictionaries.ts` (`metaDescription` copy fix, both
+locales), `.env.example` (documents the new optional `SITE_URL`).
+
+Verified: lint, format, typecheck, 273 unit tests (3 new), 46 integration
+tests unchanged (no route/query/schema code touched), the production
+build (showing `/icon`, `/robots.txt`, `/sitemap.xml`, and
+`/pl`+`/en/opengraph-image` as new, correctly statically-optimised
+routes), and 20 Playwright tests unchanged. Independently confirmed with
+a real curl smoke test against a running production build: `/robots.txt`
+and `/sitemap.xml` return real content; `/icon` returns a real 32×32 PNG
+(visually confirmed: black "WC" on signal yellow); `/pl/opengraph-image`
+and `/en/opengraph-image` return real 1200×630 PNGs (visually confirmed
+on-brand: yellow wordmark and the fixed description on an ink background);
+`/pl`'s rendered `<head>` carries a real `<title>`, the fixed
+`description`, `rel="canonical"`, a complete `openGraph`/`twitter` block
+with absolute image URLs, and `rel="icon"` — all correctly resolved
+against `http://localhost:3000` via `resolveSiteUrl`'s own fallback chain,
+since neither `SITE_URL` nor `VERCEL_URL` is set in this environment.
+
+Not created, by design: a real production domain (still an open,
+project-owner decision — `SITE_URL` is the one setting a future session
+needs the moment one exists); dynamic per-toilet share pages or district
+landing pages (`PRODUCT.md` section 17 explicitly rules out building
+these solely for SEO); custom-font loading for the generated images (the
+current render uses `next/og`'s system-font fallback); any change to the
+visible in-page "stage" badge copy.
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1692,7 +1783,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 270 tests in 38 files                          |
+| `pnpm test:unit`          | pass, 273 tests in 39 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
@@ -1815,26 +1906,26 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-027 — SEO/share baseline` per `PLAN.md` (Milestone 4 — Product
-   quality): "metadata, social card, canonical basics and crawler-safe
-   landing content are correct." Needs a `tasks/027-*.md` file.
-   `PRODUCT.md` section 17 names the MVP checklist exactly: "Indexable
-   home page describing the service," "Correct title, description, Open
-   Graph image and favicon," and explicitly rules out building dynamic
-   toilet detail pages "solely for SEO before core utility is reliable"
-   (none exist yet, and none should be added by this task). Reading
-   `app/[locale]/layout.tsx` directly shows part of this already done —
-   `generateMetadata` sets `title`/`description` per locale plus
-   `alternates.canonical` and `alternates.languages` for the `/pl`/`/en`
-   hreflang pair (TASK-002's language switch) — but there is no `public/`
-   directory at all in this repository, no favicon file, and no
-   `openGraph`/`twitter` metadata block, confirmed by direct inspection
-   rather than assumed. Those are this task's real, concrete gaps: a
-   favicon (`app/[locale]/icon.*` or `public/favicon.ico`, per this
-   Next.js version's own metadata-file convention — check
-   `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/01-metadata/`
-   before writing one, since "This is NOT the Next.js you know"), a real
-   Open Graph image, and `robots`/crawler-safety metadata for the
-   indexable home page `PRODUCT.md` asks for. No new dependency should be
-   needed — Next.js's own Metadata API and file-convention route segments
-   cover all of this natively.
+2. `TASK-028 — Milestone integration verification` per `PLAN.md`
+   (Milestone 5 — Release hardening): "full core journey is run against
+   real staging stack; integration defects only are fixed." This is a
+   real, named blocker for this session, not a task to start blind: a
+   "real staging stack" needs a real deployed environment this session
+   cannot create (the one existing deployment,
+   `gdziekibel-bienos.vercel.app`, is recorded above as an unofficial,
+   manually-uploaded stopgap that does not rebuild on push, not a staging
+   stack) and real map-tile access (no `NEXT_PUBLIC_MAPTILER_KEY`/egress
+   in this session, the same constraint recorded by every prior task).
+   `SITE_URL` (TASK-027) and a real `NEXT_PUBLIC_MAPTILER_KEY` are the two
+   concrete missing pieces standing between this project and a session
+   that can actually run TASK-028 as `PLAN.md` describes it. Before
+   starting, read `docs/adr/0022-seo-share-baseline.md` and every prior
+   task's own "no egress/no key" note (TASK-004, TASK-022, TASK-025) —
+   the pattern is consistent enough across this whole session that
+   attempting TASK-028 from an environment shaped like this one would
+   mean fabricating a "staging" result rather than observing one, exactly
+   what `AGENTS.md`'s verification rule forbids. If a future session has
+   real access, its own task file should name what it can newly observe
+   (real tiles, a real deployment's actual Core Web Vitals, a real
+   Lighthouse run against the real `SITE_URL`) rather than repeating this
+   session's fallback-path-only evidence.
