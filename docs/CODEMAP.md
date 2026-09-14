@@ -444,7 +444,9 @@ Ownership:
 - `.prettierrc.json`, `.prettierignore` — planning documents are excluded
 - `.nvmrc`, `package.json` `engines` — Node runtime expectation
 - `.env.example` — variable names only
-- `vercel.json` — framework, lockfile-enforced install, security headers
+- `vercel.json` — framework, lockfile-enforced install, security headers,
+  and `pnpm db:migrate && pnpm build` as the build command (ADR 0025) —
+  every deploy applies pending migrations first
 - `.github/workflows/ci.yml` — `quality`, `database` and `e2e` jobs
 - `.github/dependabot.yml` — weekly npm and github-actions update checks
   (TASK-029)

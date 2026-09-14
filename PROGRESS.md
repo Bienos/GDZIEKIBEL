@@ -2112,6 +2112,62 @@ recorded throughout this session — this sandboxed environment has no
 egress to any tile host, OpenFreeMap included. That verification now
 depends on the real Vercel deployment confirmed above, not a missing key.
 
+**A real `DATABASE_URL` reached production for the first time, and two
+real gaps it exposed, 2026-09-14.** The project owner set `DATABASE_URL`
+on the live Vercel project, pointed at the Supabase database provisioned
+earlier this session, then walked through fixing it live with this
+session checking real Vercel runtime logs after each change (`mcp__Vercel__get_runtime_logs`/`get_deployment`,
+not assumption) rather than guessing:
+
+1. First value used the connection string's direct host
+   (`db.aoudkfbrguheemrjtjyj.supabase.co:5432`) — failed in production
+   with `getaddrinfo ENOTFOUND`. That host is IPv6-only for this
+   Supabase project; Vercel's serverless runtime has no outbound IPv6.
+   Fixed by switching to the connection string's **transaction pooler**
+   host (`aws-0-eu-central-1.pooler.supabase.com:6543`, username
+   `postgres.<project-ref>`), which is IPv4-reachable.
+2. That surfaced `password authentication failed for user "postgres"` —
+   the username was missing its `.{project-ref}` suffix the pooler
+   requires. Fixed by resetting the database password in Supabase and
+   copying the freshly-generated pooler string directly, rather than
+   hand-editing one.
+3. With authentication working, a real, different gap appeared:
+   `relation "analytics_rate_limit_windows" does not exist` on
+   `/api/analytics/events`, while `/api/toilets/nearby` succeeded (`200`)
+   — proving the base schema existed on this database (migrated at some
+   earlier point this session) but not every migration had been applied,
+   specifically not TASK-029's newest one. **No session has a working way
+   to run `pnpm db:migrate` against this database directly**: tested
+   twice, directly, from this sandbox with the real connection string
+   passed only as an inline environment variable, never written to a
+   file — the direct host fails DNS instantly (`ENOTFOUND`, matching
+   Vercel's own failure above) and the pooler host's connection hangs to
+   a timeout rather than erroring, the same class of silent egress block
+   recorded all session for every other external host. Fixed at the
+   infrastructure level instead of by hand: `docs/adr/0025-build-time-migrations.md` —
+   `vercel.json`'s `buildCommand` is now `pnpm db:migrate && pnpm build`,
+   so every future deploy applies pending migrations using Vercel's own
+   working network path before building, closing the "how does a
+   migration ever reach production" gap this session otherwise had no
+   answer for. Verified safe first, not assumed: `db:migrate`'s
+   `--envPath .env.local` flag was confirmed, by moving `.env.local`
+   out of the way locally and supplying `DATABASE_URL` only as a real
+   environment variable, to fail gracefully and still use `process.env`
+   — exactly how Vercel itself provides the variable, no file involved.
+
+Modified: `vercel.json` (`buildCommand`), `docs/CODEMAP.md`. Created:
+`docs/adr/0025-build-time-migrations.md`. The real database password was
+handled the same way as earlier in this session: passed only as an
+inline shell environment variable for a direct connectivity test, never
+written to any file this session could commit, and confirmed absent
+from the working tree before staging anything.
+
+Not yet confirmed: whether the next real deployment's build-time
+migration actually applies the missing `analytics_rate_limit_windows`
+table (and any other gap) successfully — this note records the fix and
+the reasoning, not yet its own outcome, which the next deploy and a
+fresh runtime-log check will confirm.
+
 ## Verification at current baseline
 
 All commands run on 2026-09-13 against Node v22.22.2, pnpm 10.33.0 and a local
