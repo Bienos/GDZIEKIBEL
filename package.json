@@ -24,6 +24,7 @@
     "db:migrate:create": "node-pg-migrate -m db/migrations -j sql create",
     "db:check": "tsx scripts/db/check-postgis.ts",
     "db:reconcile-migration-history": "tsx scripts/db/reconcile-migration-history.ts",
+    "db:check-tile-style": "tsx scripts/db/check-tile-style.ts",
     "ingest:osm": "tsx scripts/ingest/osm.ts",
     "research:probe": "tsx scripts/research/probe-sources.ts"
   },
