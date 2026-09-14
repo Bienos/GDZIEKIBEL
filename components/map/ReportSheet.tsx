@@ -54,7 +54,12 @@ export function ReportSheet({
 
   return (
     <div className={styles.scrim}>
-      <div className={styles.sheet} role="dialog" aria-modal="false">
+      <div
+        className={styles.sheet}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="report-sheet-heading"
+      >
         <button type="button" className={styles.detailClose} onClick={onClose}>
           {dictionary.detailClose}
         </button>

@@ -63,11 +63,21 @@ export function ToiletDetailSheet({
 
   return (
     <div className={styles.scrim}>
-      <div className={styles.sheet} role="dialog" aria-modal="false">
+      <div
+        className={styles.sheet}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="toilet-detail-heading"
+      >
         <button type="button" className={styles.detailClose} onClick={onClose}>
           {dictionary.detailClose}
         </button>
-        <h2 ref={headingRef} tabIndex={-1} className={styles.sheetHeadline}>
+        <h2
+          id="toilet-detail-heading"
+          ref={headingRef}
+          tabIndex={-1}
+          className={styles.sheetHeadline}
+        >
           {toilet.name}
         </h2>
         <p className={styles.previewDistance}>

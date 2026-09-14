@@ -41,11 +41,21 @@ export function FiltersSheet({
 
   return (
     <div className={styles.scrim}>
-      <div className={styles.sheet} role="dialog" aria-modal="false">
+      <div
+        className={styles.sheet}
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="filters-sheet-heading"
+      >
         <button type="button" className={styles.detailClose} onClick={onClose}>
           {dictionary.detailClose}
         </button>
-        <h2 ref={headingRef} tabIndex={-1} className={styles.sheetHeadline}>
+        <h2
+          id="filters-sheet-heading"
+          ref={headingRef}
+          tabIndex={-1}
+          className={styles.sheetHeadline}
+        >
           {dictionary.filtersToggleLabel}
         </h2>
 

@@ -460,8 +460,18 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
 
       {(locationFlow === 'asking' || locationFlow === 'requesting') && (
         <div className={styles.scrim}>
-          <div className={styles.sheet} role="dialog" aria-modal="false">
-            <h2 ref={askHeadingRef} tabIndex={-1} className={styles.sheetHeadline}>
+          <div
+            className={styles.sheet}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="location-ask-headline"
+          >
+            <h2
+              id="location-ask-headline"
+              ref={askHeadingRef}
+              tabIndex={-1}
+              className={styles.sheetHeadline}
+            >
               {dictionary.locationAskHeadline}
             </h2>
             <p className={styles.sheetBody}>{dictionary.locationAskBody}</p>
@@ -488,8 +498,18 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
 
       {locationFlow === 'denied' && (
         <div className={styles.scrim}>
-          <div className={styles.sheet} role="dialog" aria-modal="false">
-            <h2 ref={deniedHeadingRef} tabIndex={-1} className={styles.sheetHeadline}>
+          <div
+            className={styles.sheet}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="location-denied-headline"
+          >
+            <h2
+              id="location-denied-headline"
+              ref={deniedHeadingRef}
+              tabIndex={-1}
+              className={styles.sheetHeadline}
+            >
               {dictionary.locationDeniedHeadline}
             </h2>
             <p className={styles.sheetBody}>{dictionary.locationDeniedBody}</p>
@@ -509,8 +529,18 @@ export function MapShell({ dictionary }: { dictionary: Dictionary }) {
 
       {locationFlow === 'outside' && (
         <div className={styles.scrim}>
-          <div className={styles.sheet} role="dialog" aria-modal="false">
-            <h2 ref={outsideHeadingRef} tabIndex={-1} className={styles.sheetHeadline}>
+          <div
+            className={styles.sheet}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="location-outside-headline"
+          >
+            <h2
+              id="location-outside-headline"
+              ref={outsideHeadingRef}
+              tabIndex={-1}
+              className={styles.sheetHeadline}
+            >
               {dictionary.outsideWarsawHeadline}
             </h2>
             <p className={styles.sheetBody}>{dictionary.outsideWarsawBody}</p>

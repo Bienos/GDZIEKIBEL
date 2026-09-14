@@ -60,7 +60,10 @@ app/
                       own stylesheet is not imported here (TASK-025, ADR
                       0020) — it loads only alongside the script that needs
                       it, from MapShell.tsx itself
-  tokens.css          design tokens (colour, spacing, type) — single source
+  tokens.css          design tokens (colour, spacing, type) — single source;
+                      `--color-muted-500` is contrast-checked against
+                      `--color-paper-50` (4.76:1, WCAG AA requires 4.5:1 —
+                      TASK-026, ADR 0021), not merely eyeballed
 components/
   map/MapShell.tsx    the Warsaw map (TASK-005), the location permission
                       flow (TASK-006), and nearby toilet markers with
@@ -88,7 +91,11 @@ components/
                       which never throws; the `maplibre-gl` script and its
                       stylesheet load together via one `Promise.all` (TASK-025,
                       ADR 0020), so the map's own DOM is never created before
-                      its styles have loaded, on the one path that loads both
+                      its styles have loaded, on the one path that loads both;
+                      its three location-flow `role="dialog"` screens
+                      (`asking`, `denied`, `outside`) are each named via
+                      `aria-labelledby` pointing at their own heading
+                      (TASK-026, ADR 0021)
   map/NearestToiletPreview.tsx
                       collapsed "nearest sensible toilet" preview (TASK-010):
                       the top-ranked (TASK-009) result's name, distance/ETA,
@@ -108,18 +115,25 @@ components/
                       place of this sheet; no hours yet (see the task file
                       for why); the navigation CTA also fires the
                       client-only `navigation_clicked` analytics event
-                      (TASK-023, ADR 0018)
+                      (TASK-023, ADR 0018); its `role="dialog"` is named via
+                      `aria-labelledby` pointing at its own heading (TASK-026,
+                      ADR 0021), not just "dialog" alone
   map/ReportSheet.tsx  the report flow (TASK-020, DESIGN.md 9.4 position 8,
                       ADR 0015): the seven BRAND.md "Reporting" reasons as
                       radios, an optional note, WYŚLIJ ZGŁOSZENIE; success
                       replaces the form, failure keeps whatever was picked/
                       typed so retrying is not starting over; no
-                      rate-limiting (TASK-021's job)
+                      rate-limiting (TASK-021's job); its `role="dialog"` is
+                      named via `aria-labelledby` (TASK-026, ADR 0021) —
+                      previously wired to its own fieldset only, not the
+                      dialog itself
   map/FiltersSheet.tsx
                       the five MVP filters (TASK-016, DESIGN.md 9.6): four
                       sections, toggles bound to a draft state; POKAŻ WYNIKI
                       applies it, WYCZYŚĆ clears and reapplies; no live
-                      result count (see the task file for why)
+                      result count (see the task file for why); its
+                      `role="dialog"` is named via `aria-labelledby`
+                      (TASK-026, ADR 0021)
   map/NoResultsState.tsx
                       no-results overlay (TASK-017, ADR 0012): diagnoses an
                       active filter, an expandable radius, or an exhausted
@@ -462,6 +476,17 @@ Ownership:
   is set — `PRODUCT.md` section 16 explicitly defers concrete numbers to
   after baseline measurement, and this session cannot measure the
   real-tile-provider path (no `NEXT_PUBLIC_MAPTILER_KEY`/egress here).
+- `docs/adr/0021-accessible-dialog-names-and-contrast.md` — the same real
+  Lighthouse run's accessibility category found `aria-dialog-name` and
+  `color-contrast` both scoring 0; checking every other `role="dialog"`
+  found the identical missing-name gap in all six (not just the one
+  Lighthouse's single-page snapshot saw), fixed the same way everywhere;
+  `--color-muted-500` darkened from a real computed WCAG ratio (4.06→4.76:1).
+  Measured: accessibility score 92→100. A manual code-level review records
+  what automated tooling could not check (touch targets, colour-alone
+  status, marker labels, reduced motion, focus-visible) — all already
+  passing, read directly rather than assumed; real screen-reader/keyboard
+  and real-map-tile checks remain unverifiable from this session.
 - `docs/contracts/osm-toilets-source.md` — what OpenStreetMap provides and the
   shape the ingestion adapter consumes.
 - `docs/research/` — dated research snapshots. Evidence, not a source of truth;
@@ -588,8 +613,23 @@ fails without the fix. No numeric performance budget is set yet —
 `PRODUCT.md` section 16 defers that until baseline measurement exists,
 and the real-tile-provider path (the one a user actually experiences with
 a working map) still cannot be measured from this session (no
-`NEXT_PUBLIC_MAPTILER_KEY`/egress here). Ingestion exists but has never
-run against the live source — so
+`NEXT_PUBLIC_MAPTILER_KEY`/egress here). An accessibility pass now closes
+the two real, automated findings that same Lighthouse run's accessibility
+category caught (TASK-026, ADR 0021): every `role="dialog"` in the app —
+all six across `MapShell.tsx`'s three location screens,
+`ToiletDetailSheet.tsx`, `FiltersSheet.tsx`, and `ReportSheet.tsx` — now
+has a real accessible name via `aria-labelledby`, not just the one
+Lighthouse's single-page snapshot happened to see; `--color-muted-500`
+is now a real, computed 4.76:1 against `--color-paper-50`, up from 4.06:1
+(WCAG AA needs 4.5:1). Measured: accessibility score 92→100. A direct
+code-level review, not a blanket claim, confirmed touch targets
+(44×44 px+ throughout), colour-never-alone status badges, real
+`<button>`+`aria-label` markers, and broad `:focus-visible` styling were
+already correct; reduced motion is trivially satisfied since this app's
+own CSS has no animation to gate. Real screen-reader/keyboard-only
+testing and anything depending on real map tiles remain unverifiable
+from this session, named honestly rather than assumed. Ingestion exists
+but has never run against the live source — so
 the opening-hours and charge parsers, and the confidence computation,
 have never seen a real OSM string, only constructed fixtures matching
 their documented grammars — and the map — tiles, the location dot, and

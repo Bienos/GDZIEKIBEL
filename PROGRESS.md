@@ -1553,6 +1553,110 @@ performance measurement (still blocked — no
 `NEXT_PUBLIC_MAPTILER_KEY`/egress in this session, the same recorded gap
 as every prior task).
 
+### TASK-026 — Accessibility pass
+
+Complete on 2026-09-14. Specified in `tasks/026-accessibility-pass.md`;
+decision recorded in `docs/adr/0021-accessible-dialog-names-and-contrast.md`.
+
+**Read the existing evidence before auditing blind.** `TASK-025`'s own
+Lighthouse run had already scored `accessibility: 92` on the fallback
+path, with the full JSON report still on disk. Reading its accessibility
+category directly (rather than re-running Lighthouse and eyeballing a
+score) found exactly two automated findings, both scoring `0`:
+`aria-dialog-name` and `color-contrast`.
+
+**The dialog-naming gap was systemic, not isolated.** Lighthouse only
+audits whatever is on the DOM when it loads — the location-ask sheet on
+initial load, not the toilet detail sheet, filters sheet, or report
+sheet. Checking those directly found the identical gap in every one of
+them: a `role="dialog"` container with a real heading, but no
+`aria-labelledby` connecting the two. `ReportSheet.tsx` had already given
+its heading an `id` (reused by its own fieldset), making the missing wire
+on the dialog itself the more visible half of the same gap. Fixed all six
+dialogs the same way: `MapShell.tsx`'s three location screens (`asking`,
+`denied`, `outside`), `ToiletDetailSheet.tsx`, `FiltersSheet.tsx`, and
+`ReportSheet.tsx` — each heading given a stable `id`, each dialog's
+`aria-labelledby` pointing at it. No new focus management was needed:
+every sheet already used the `tabIndex={-1}` + programmatic-focus pattern
+from `TASK-006`.
+
+**Contrast fixed with a real computed ratio, not a guess.**
+`--color-muted-500` (`#767676`) against `--color-paper-50` (`#f5f2ea`)
+measured 4.06:1; WCAG AA requires 4.5:1 for normal text. Computed the
+exact relative-luminance formula (the same one a real Lighthouse
+`color-contrast` audit uses) to find `#6b6b6b` measures 4.76:1 — a small
+safety margin, and visually close to the original. `tokens.css`'s own
+doc comment already permitted this: "Raw palette values are v1
+implementation targets... adjust only after contrast checks." One token
+change fixed all five of its existing usages.
+
+**A manual review recorded honestly, not a blanket pass claim.** Read the
+actual code, rather than assuming, against `PRODUCT.md` section 15 and
+`DESIGN.md` section 14's remaining checks:
+
+- Touch targets (≥44×44 px): already true throughout (44/48/52/88 px
+  `min-height`/`min-width` on every interactive element checked).
+- Colour never alone for status: `openingStatusLabel` always returns real
+  text; `openingStatusVariant` separately drives colour.
+- Marker screen-reader labels: `createToiletMarkerElement` already builds
+  a real `<button>` with `aria-label` and `aria-pressed` — genuinely
+  keyboard-focusable and activatable by default already.
+- Reduced motion: `app/`/`components/` CSS has zero `transition`/
+  `animation` rules (confirmed by direct search, excluding `maplibre-gl`'s
+  own bundled CSS) — nothing to gate because nothing animates.
+- Visible focus state: broad `:focus-visible` outlines confirmed present;
+  the one `outline: none` found is a deliberate, correct exception on a
+  `tabIndex={-1}` (never `Tab`-reachable) heading, not a lost indicator on
+  a real interactive element.
+
+Not verified, named honestly: real screen-reader output, real
+keyboard-only navigation end to end, and marker tab-order reachability
+inside a real MapLibre canvas — no `NEXT_PUBLIC_MAPTILER_KEY`/egress
+exists in this session (the same recorded constraint as every prior
+task), and no screen reader is available to drive directly.
+
+**Measured result** (same real Lighthouse run, before/after, fallback
+path):
+
+| Metric              | Before | After |
+| --------------------- | ------ | ----- |
+| Accessibility score     | 92     | 100   |
+| `aria-dialog-name`       | 0      | 1     |
+| `color-contrast`         | 0      | 1     |
+
+**Proven with real regression tests, not just measurements.** A new unit
+test reads the real hex values out of `tokens.css` and computes the real
+WCAG contrast ratio, failing if a future edit regresses below 4.5:1. Six
+existing/new Playwright assertions query each dialog via
+`page.getByRole('dialog', { name: '...' })` — the browser's own
+accessible-name computation, not a visual text match. Verified all six
+genuinely fail against the pre-fix code (real error output confirming
+"element(s) not found" for each) and pass with the fix restored.
+
+Created: `docs/adr/0021-accessible-dialog-names-and-contrast.md`,
+`tasks/026-accessibility-pass.md`. `tests/unit/tokens.test.ts` gained a
+contrast-ratio guard. `e2e/home.spec.ts` gained/upgraded six dialog-name
+assertions.
+
+Modified: `components/map/MapShell.tsx`, `ToiletDetailSheet.tsx`,
+`FiltersSheet.tsx`, `ReportSheet.tsx` (each dialog's `aria-labelledby`),
+`app/tokens.css` (`--color-muted-500` darkened).
+
+Verified: lint, format, typecheck, 270 unit tests (1 new), 46 integration
+tests unchanged (no route/query/schema code touched), the production
+build, and 20 Playwright tests (14 pre-existing unmodified, 6
+upgraded/added dialog-name assertions, all confirmed to fail against the
+pre-fix code and pass against the fix). A real Lighthouse mobile run was
+performed before and after, with real numbers quoted above.
+
+Not created, by design: a redesigned colour palette beyond the one
+contrast-driven token change; a live-tile accessibility check (still
+blocked — no `NEXT_PUBLIC_MAPTILER_KEY`/egress); any behaviour change to
+any component beyond its accessible-name/contrast properties; any WCAG
+conformance claim beyond what was actually checked (this is not a full
+WCAG audit, only the two automated findings plus a targeted manual
+review of `PRODUCT.md` section 15's remaining checks).
+
 ### Owner-directed additions outside the task sequence
 
 **Polish/English language switch, 2026-09-13.** Requested by the project owner
@@ -1588,7 +1692,7 @@ before the run.
 | `pnpm lint`               | pass, no findings                                    |
 | `pnpm format:check`       | pass, all matched files match Prettier style         |
 | `pnpm typecheck`          | pass, no diagnostics                                 |
-| `pnpm test:unit`          | pass, 269 tests in 38 files                          |
+| `pnpm test:unit`          | pass, 270 tests in 38 files                          |
 | `pnpm build`              | pass, `/pl` and `/en` prerendered as static HTML      |
 | `pnpm db:migrate`         | pass, both migrations applied to an empty database   |
 | `pnpm db:check`           | pass, `PostGIS OK — installed version 3.4.2`         |
@@ -1711,28 +1815,26 @@ Two things, in order:
 1. Visually confirm the map shell renders real tiles and a real location dot,
    from a session with a real `NEXT_PUBLIC_MAPTILER_KEY` and working egress
    to `api.maptiler.com`.
-2. `TASK-026 — Accessibility pass` per `PLAN.md` (Milestone 4 — Product
-   quality): "map/list/sheets/core flow pass defined keyboard,
-   screen-reader, contrast and touch-target checks." Needs a
-   `tasks/026-*.md` file. `PRODUCT.md` section 15 names the concrete
-   checks: "core flows must be keyboard accessible," "touch targets at
-   least 44x44 CSS px where practical," "sufficient contrast," "do not
-   rely on colour alone for status," "map interactions must have list
-   equivalents," "screen-reader labels for icons and markers," "respect
-   reduced-motion preferences." `DESIGN.md` section 14 restates the same
-   checks with two additions worth auditing directly: "visible focus
-   state" and "bottom sheets maintain logical focus order" — both
-   plausibly already true given `MapShell.tsx`'s existing
-   `askHeadingRef`/`deniedHeadingRef`/`outsideHeadingRef` focus-management
-   pattern (established TASK-006/018), but never yet checked
-   systematically against a real checklist. Given `TASK-025`'s own
-   Lighthouse run already scored `accessibility: 92` on the fallback path
-   (see this session's TASK-025 entry above) with the full JSON report
-   available for its specific findings, this task's first real step is
-   reading that report's accessibility audit details (not re-running
-   Lighthouse blind) before deciding what, if anything, needs a real fix
-   versus what the automated score cannot check (real keyboard-only
-   navigation through the report/filter sheets, real screen-reader
-   labels on the toilet markers `marker-label.ts` already generates,
-   real reduced-motion behaviour). `AGENTS.md`'s own "measure first"
-   discipline `TASK-025` just established applies here too.
+2. `TASK-027 — SEO/share baseline` per `PLAN.md` (Milestone 4 — Product
+   quality): "metadata, social card, canonical basics and crawler-safe
+   landing content are correct." Needs a `tasks/027-*.md` file.
+   `PRODUCT.md` section 17 names the MVP checklist exactly: "Indexable
+   home page describing the service," "Correct title, description, Open
+   Graph image and favicon," and explicitly rules out building dynamic
+   toilet detail pages "solely for SEO before core utility is reliable"
+   (none exist yet, and none should be added by this task). Reading
+   `app/[locale]/layout.tsx` directly shows part of this already done —
+   `generateMetadata` sets `title`/`description` per locale plus
+   `alternates.canonical` and `alternates.languages` for the `/pl`/`/en`
+   hreflang pair (TASK-002's language switch) — but there is no `public/`
+   directory at all in this repository, no favicon file, and no
+   `openGraph`/`twitter` metadata block, confirmed by direct inspection
+   rather than assumed. Those are this task's real, concrete gaps: a
+   favicon (`app/[locale]/icon.*` or `public/favicon.ico`, per this
+   Next.js version's own metadata-file convention — check
+   `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/01-metadata/`
+   before writing one, since "This is NOT the Next.js you know"), a real
+   Open Graph image, and `robots`/crawler-safety metadata for the
+   indexable home page `PRODUCT.md` asks for. No new dependency should be
+   needed — Next.js's own Metadata API and file-convention route segments
+   cover all of this natively.

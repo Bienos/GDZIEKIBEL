@@ -17,7 +17,12 @@
   --color-status-green: #9bea88;
   --color-status-red: #ff6b5f;
   --color-status-orange: #ffb547;
-  --color-muted-500: #767676;
+  /* Darkened from the original #767676 (TASK-026): a real Lighthouse
+     audit found 4.06:1 against --color-paper-50, short of WCAG AA's
+     4.5:1 for normal text (DESIGN.md 14, PRODUCT.md 15). #6b6b6b measures
+     4.76:1, a small margin above the minimum for real-world rendering
+     variance, while staying visually close to the original muted grey. */
+  --color-muted-500: #6b6b6b;
   --color-line-200: #d8d5ce;
 
   /* Not a brand colour. A deliberately "familiar" location-marker blue,

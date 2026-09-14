@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023/025 smoke
+ * TASK-005/006/008/010/011/012/013/015/016/017/018/020/023/025/026 smoke
  * tests: the home page loads with the GdzieKibel.pl identity, the map
  * shell's tile fallback state (since no environment available to this
  * suite holds a real MapTiler key — see
@@ -14,8 +14,10 @@ import { expect, test } from '@playwright/test';
  * colour, the map/list toggle, the filter sheet sending real filters in
  * the nearby request, the no-results overlay's three diagnosed states, a
  * real location grant from outside Warsaw showing its own distinct screen,
- * the report flow, and that a client-only analytics event actually reaches
- * `/api/analytics/events` with the expected event name.
+ * the report flow, that a client-only analytics event actually reaches
+ * `/api/analytics/events` with the expected event name, and that every
+ * sheet's `role="dialog"` resolves by its own real accessible name — not
+ * just "dialog" alone (TASK-026, docs/adr/0021-accessible-dialog-names-and-contrast.md).
  *
  * The permission ask, the fetch, the preview, and the detail sheet all
  * appear independent of tile state (see MapShell.tsx), so they are fully
@@ -92,8 +94,11 @@ test('the location permission ask appears on load and can be skipped', async ({ 
   ).toBeVisible();
   await expect(page.getByText('Używamy lokalizacji tylko po to', { exact: false })).toBeVisible();
   // The ask never mimics an OS dialog, but it is real dialog-role content a
-  // screen reader can reach, and focus moves to it (DESIGN.md 14).
+  // screen reader can reach, and focus moves to it (DESIGN.md 14). Named by
+  // its own heading via aria-labelledby (TASK-026, ADR 0021), not just
+  // "dialog" alone.
   await expect(heading).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'POZWÓL NAM ZNALEŹĆ KIBEL.' })).toBeVisible();
 
   await page.getByRole('button', { name: 'NIE TERAZ' }).click();
 
@@ -136,6 +141,8 @@ test('a denied, unavailable, or timed-out location shows the one shared screen',
     page.getByText('Bez lokalizacji możemy pokazać tylko ogólną mapę Warszawy.'),
   ).toBeVisible();
   await expect(deniedHeading).toBeFocused();
+  // Named by its own heading (TASK-026, ADR 0021), not just "dialog" alone.
+  await expect(page.getByRole('dialog', { name: 'NIE WIEMY, GDZIE JESTEŚ.' })).toBeVisible();
 
   await page.getByRole('button', { name: 'OTWÓRZ MAPĘ WARSZAWY' }).click();
   await expect(deniedHeading).toHaveCount(0);
@@ -210,6 +217,8 @@ test.describe('a real browser location grant from outside Warsaw', () => {
       page.getByText('Szukamy kibli tylko w Warszawie — nie mamy nic w Twojej okolicy.'),
     ).toBeVisible();
     await expect(outsideHeading).toBeFocused();
+    // Named by its own heading (TASK-026, ADR 0021), not just "dialog" alone.
+    await expect(page.getByRole('dialog', { name: 'JESTEŚ POZA WARSZAWĄ.' })).toBeVisible();
 
     // Never the denied screen's copy, and no retry action — being outside
     // Warsaw will not change on a second attempt (docs/adr/0013).
@@ -331,7 +340,9 @@ test('tapping the preview opens the toilet detail sheet, and closing it returns 
   await expect(heading).toBeFocused();
   await expect(preview).toHaveCount(0);
 
-  const sheet = page.getByRole('dialog');
+  // Named by its own heading (the toilet's name) via aria-labelledby
+  // (TASK-026, ADR 0021), not just "dialog" alone.
+  const sheet = page.getByRole('dialog', { name: 'Toaleta Testowa' });
   await expect(sheet.getByText('240 M · ~4 MIN PIESZO')).toBeVisible();
   await expect(sheet.getByText('STATUS NIEPEWNY')).toBeVisible();
   await expect(sheet.getByText('4.50 PLN')).toBeVisible();
@@ -413,6 +424,8 @@ test('the report control opens the report sheet, and a successful submission sho
   const heading = page.getByRole('heading', { name: 'CO JEST NIE TAK?' });
   await expect(heading).toBeVisible();
   await expect(heading).toBeFocused();
+  // Named by its own heading (TASK-026, ADR 0021), not just "dialog" alone.
+  await expect(page.getByRole('dialog', { name: 'CO JEST NIE TAK?' })).toBeVisible();
 
   await page.getByRole('radio', { name: 'Godziny są złe' }).check();
   await page.getByLabel('Szczegóły (opcjonalnie)').fill('Zamknięte już o 20');
@@ -601,6 +614,8 @@ test('the filter sheet sends filters in the nearby request, and clear resets the
   expect(requestBodies[0]).toEqual({ location: { lat: 52.2297, lng: 21.0122 } });
 
   await page.getByRole('button', { name: 'FILTRY' }).click();
+  // Named by its own heading (TASK-026, ADR 0021), not just "dialog" alone.
+  await expect(page.getByRole('dialog', { name: 'FILTRY' })).toBeVisible();
   await page.getByRole('checkbox', { name: 'OTWARTE TERAZ' }).check();
   await page.getByRole('button', { name: 'POKAŻ WYNIKI' }).click();
 
