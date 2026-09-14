@@ -2069,9 +2069,12 @@ showed an "22.x (override)" badge — consistent with, not contradicting,
 this repository's own `.nvmrc`/`package.json` `engines` pin of Node 22,
 which Vercel's build correctly honours over its own newer platform
 default. No environment-variable-management tool exists in this
-session's Vercel MCP toolset (confirmed by search), so `SITE_URL` still
-cannot be set from here directly — that remains a manual step in the
-Vercel dashboard, or a future session's tool gap to close.
+session's Vercel MCP toolset (confirmed by search, twice), so `SITE_URL`
+cannot be set from here directly — it remains a manual step in the
+Vercel dashboard. Superseded in effect 2026-09-14: `resolveSiteUrl` now
+reaches the stable production host with no environment variable set at
+all, so nothing is blocked on that manual step (see the canonical-URL
+entry below).
 
 **Tile provider switched to OpenFreeMap, 2026-09-14.** Recorded in full
 in `docs/adr/0024-openfreemap-tile-provider.md`, which supersedes
@@ -2310,13 +2313,27 @@ host. No amount of redeploying or cache-clearing could ever have changed
 what that URL served, and its Network tab showed exactly that — no
 worker, not one `.pbf` request.
 
-`SITE_URL` still being unset (recorded below) is what makes this trap
-easy to fall into: `resolveSiteUrl` falls back to Vercel's own
-`VERCEL_URL`, which is the deployment-specific host, so the deployed page
-writes that dead-snapshot URL into its own `canonical`/`og:url` — meaning
-any link copied or shared from the site pins the reader to a frozen
-build. Setting `SITE_URL` is no longer just an SEO detail; it is what
-stops the live site from handing out URLs that can never update.
+**Fixed in code, 2026-09-14, rather than left to a setting.** What made
+the trap easy to fall into was `resolveSiteUrl`'s own fallback: with
+`SITE_URL` unset it used Vercel's `VERCEL_URL`, which is the
+*deployment-specific* host, so the live page wrote that dead-snapshot URL
+into its own `canonical`/`og:url` — every link copied or shared from the
+site pinned its reader to a frozen build. No session's toolset can write
+a Vercel environment variable (re-confirmed by tool search: only Render
+exposes one, and this project is not on Render), so relying on someone
+setting `SITE_URL` would have left the defect live indefinitely.
+
+`lib/site-url.ts` now prefers `VERCEL_PROJECT_PRODUCTION_URL` — Vercel's
+documented "production domain name of the project", auto-provided and
+configuration-free exactly like `VERCEL_URL` — whenever `VERCEL_ENV` is
+`production`; previews deliberately keep `VERCEL_URL`, where the
+deployment-specific host is the correct self-reference
+(`docs/adr/0022-seo-share-baseline.md`, amendment). Confirmed live after
+deploy: `https://gdziekibel-bienos.vercel.app/robots.txt` now emits
+`Sitemap: https://gdziekibel.vercel.app/sitemap.xml` — a stable host, no
+deployment hash. Setting `SITE_URL` explicitly still overrides
+everything and is still right once a real domain exists; the difference
+is the site is no longer wrong until someone remembers to.
 
 Modified: `components/map/MapShell.tsx`, `e2e/home.spec.ts`,
 `package.json`, `.gitignore`, `eslint.config.mjs`, `docs/CODEMAP.md`.
@@ -2506,18 +2523,14 @@ OSM ingestion all confirmed working against production (above) —
 TASK-028 is now much closer than previously recorded:
 
 1. `TASK-028 — Milestone integration verification` — the deployment is
-   real, the map no longer needs a key, the database is real, reachable,
-   fully migrated, and holds real Warsaw toilet data (562 rows). The one
-   concrete, confirmed-remaining gap: `SITE_URL` is not set on Vercel —
-   checked directly by inspecting the live page's own served HTML, whose
-   `canonical`/`og:url` tags point at the deployment-specific
-   `gdziekibel-<hash>-bienos.vercel.app` rather than the stable
-   `gdziekibel.vercel.app` (`resolveSiteUrl`'s fallback to Vercel's own
-   `VERCEL_URL`, which is exactly this deployment-specific value, working
-   as designed in the absence of an explicit override). Setting
-   `SITE_URL=https://gdziekibel.vercel.app` in Vercel's environment
-   variables and redeploying is the one remaining concrete step before
-   attempting this task for real.
+   real, the map no longer needs a key and now genuinely renders tiles in
+   a real browser, the database is real, reachable, fully migrated, and
+   holds real Warsaw toilet data (562 rows). The `SITE_URL` gap this
+   entry previously named as the one blocker is resolved: production now
+   resolves its own base URL to the stable host without any environment
+   variable being set (see the canonical-URL entry above, confirmed live
+   in `robots.txt`). No blocker is currently recorded against attempting
+   this task, beyond its own verification work.
 2. `TASK-031 — Staging release verification` and `TASK-032 — Production
    release` — both need a real migration/rollback rehearsal. The
    database is real and reachable now, but only from Vercel's own
